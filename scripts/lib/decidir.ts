@@ -17,12 +17,31 @@ export type Decisao =
   | { tipo: 'confirmar'; candidatos: Pontuado[] }
   | { tipo: 'nada' }
 
-// Maior semelhança entre o título encontrado e qualquer nome conhecido da obra.
-export function pontuar(nomesDaObra: string[], tituloEncontrado: string): number {
-  const encontrado = normalizarTitulo(tituloEncontrado)
+// O tipo no fim do nome ("Another God of War Manhua") é do site, não da obra.
+function semTipo(normalizado: string): string {
+  return normalizado.replace(/ (?:manga|manhwa|manhua)$/, '')
+}
+
+// Nome que está no endereço: ".../manga/a-big-shot-actually" -> "a big shot actually".
+// Os sites renomeiam obras, mas o endereço costuma guardar o nome antigo — que
+// é justamente o que estava no título da aba.
+export function nomeDoEndereco(url: string): string {
+  const ultimo = new URL(url).pathname.split('/').filter(Boolean).at(-1) ?? ''
+  return normalizarTitulo(decodeURIComponent(ultimo))
+}
+
+// Maior semelhança entre qualquer nome conhecido da obra e o que foi
+// encontrado: o título do resultado ou o nome que está no endereço dele.
+export function pontuar(nomesDaObra: string[], tituloEncontrado: string, url?: string): number {
+  const encontrados = [semTipo(normalizarTitulo(tituloEncontrado))]
+  if (url) encontrados.push(semTipo(nomeDoEndereco(url)))
+
   let melhor = 0
   for (const nome of nomesDaObra) {
-    melhor = Math.max(melhor, semelhanca(normalizarTitulo(nome), encontrado))
+    const normalizado = semTipo(normalizarTitulo(nome))
+    for (const encontrado of encontrados) {
+      melhor = Math.max(melhor, semelhanca(normalizado, encontrado))
+    }
   }
   return melhor
 }
@@ -30,7 +49,7 @@ export function pontuar(nomesDaObra: string[], tituloEncontrado: string): number
 export function decidir(nomesDaObra: string[], resultados: ResultadoBusca[]): Decisao {
   // Pontua e ordena do mais parecido para o menos
   const pontuados = resultados
-    .map((r): Pontuado => ({ ...r, score: pontuar(nomesDaObra, r.titulo) }))
+    .map((r): Pontuado => ({ ...r, score: pontuar(nomesDaObra, r.titulo, r.url) }))
     .filter((r) => r.score >= SCORE_MINIMO_CANDIDATO)
     .sort((a, b) => b.score - a.score)
 

@@ -15,6 +15,10 @@ export interface Adaptador {
   lerObra(urlObra: string): Promise<DadosObra> // título, capa, títulos alternativos
   listarCapitulos(urlObra: string): Promise<CapituloRemoto[]> // numero, titulo, url
   listarPaginas(urlCapitulo: string): Promise<string[]> // URLs das imagens, em ordem
+
+  // Opcional: endereço em que a obra provavelmente está, montado só pelo nome.
+  // Serve de último recurso quando a busca do site não acha nada.
+  urlProvavel?(titulo: string): string
 }
 
 // Quem chama fornece o acesso à rede. É aqui que ficam o intervalo entre

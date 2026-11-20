@@ -74,6 +74,19 @@ async function principal() {
         }
         if (decisao.tipo === 'vincular') break
       }
+
+      // Último recurso: a busca do site não achou nada, tenta o endereço direto.
+      // Se a página existir (não der 404), é a obra: o endereço saiu do nome dela.
+      if (decisao.tipo === 'nada' && adaptador.urlProvavel) {
+        const url = adaptador.urlProvavel(obra.titulo)
+        try {
+          const dados = await adaptador.lerObra(url)
+          decisao = { tipo: 'vincular', escolhido: { titulo: dados.titulo, url, capaUrl: dados.capaUrl, score: 1 } }
+          termoUsado = url
+        } catch {
+          // Página não existe: continua sem resultado
+        }
+      }
       decisoes.push({ obra, decisao, termo: termoUsado })
     } catch (erro) {
       erros.push({ obra, erro: erro instanceof Error ? erro.message : String(erro) })
