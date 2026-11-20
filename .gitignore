@@ -1,0 +1,28 @@
+# Dependências e build
+node_modules
+dist
+dist-ssr
+*.local
+
+# Segredos: nunca vão para o repositório (ele é público)
+.env
+.env.*
+!.env.example
+.dev.vars
+
+# Dados pessoais: a lista de abas e os relatórios ficam só no computador
+dados/*
+!dados/.gitkeep
+
+# Supabase CLI e Wrangler
+supabase/.temp
+supabase/.branches
+.wrangler
+
+# Logs e editor
+logs
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store

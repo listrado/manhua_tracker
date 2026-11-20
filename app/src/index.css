@@ -1,0 +1,109 @@
+/* Tema escuro por padrão, pensado para uso com uma mão no iPhone. */
+:root {
+  --fundo: #0f1115;
+  --cartao: #181b22;
+  --borda: #2a2f3a;
+  --texto: #e8eaf0;
+  --texto-suave: #9aa1b2;
+  --destaque: #6c8cff;
+  --erro: #ff7b7b;
+
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--fundo);
+  color: var(--texto);
+  -webkit-text-size-adjust: 100%;
+}
+
+.tela-centro {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.cartao {
+  width: 100%;
+  max-width: 380px;
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  background: var(--cartao);
+  border: 1px solid var(--borda);
+  border-radius: 16px;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 1.5rem;
+}
+
+p {
+  margin: 0;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.875rem;
+  color: var(--texto-suave);
+}
+
+/* 16px ou mais no input: abaixo disso o Safari do iPhone dá zoom ao focar. */
+input {
+  width: 100%;
+  padding: 12px;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--texto);
+  background: var(--fundo);
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--destaque);
+  outline-offset: 2px;
+}
+
+button {
+  min-height: 48px;
+  padding: 12px;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--destaque);
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+}
+
+button.secundario {
+  color: var(--texto);
+  background: transparent;
+  border: 1px solid var(--borda);
+}
+
+.suave {
+  color: var(--texto-suave);
+}
+
+.erro {
+  color: var(--erro);
+}
