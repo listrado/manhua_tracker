@@ -4,8 +4,10 @@ import {
   carregarObra,
   carregarPaginas,
   ErroSenhaIncorreta,
+  lerModoAutomatico,
   lerPosicao,
   marcarLido,
+  salvarModoAutomatico,
   salvarPosicao,
   type Capitulo,
   type ObraLeitor,
@@ -17,9 +19,16 @@ import { esquecerSenha } from '../lib/senha'
 // do site de origem. No fim de cada capítulo há a caixinha "lido". O download
 // para ler offline entra depois (depende do proxy de imagem).
 
-// Distância da tela em que um capítulo conta como "perto" e fica montado.
-// Longe disso ele vira um espaço reservado com a mesma altura, para o Safari
-// não segurar milhares de imagens na memória.
+// Quantos capítulos À FRENTE do que está sendo lido ficam carregados (lista de
+// imagens e as próprias imagens). Assim, se a internet cair, dá para seguir
+// lendo. Não é a obra inteira: centenas de capítulos não cabem na memória do
+// Safari — para isso existe o download offline.
+const CAPITULOS_ADIANTE = 5
+
+// Distância da tela em que um capítulo JÁ LIDO (acima) ainda fica montado.
+// Além disso ele vira um espaço reservado com a mesma altura, para o Safari
+// não segurar milhares de imagens na memória. Os capítulos abaixo nunca são
+// desmontados: são os que ainda vão ser lidos.
 const MARGEM_PERTO = '3000px 0px'
 // Quanto antes do fim da página o próximo capítulo começa a carregar.
 const MARGEM_PROXIMO = '2000px 0px'
@@ -46,14 +55,16 @@ function Pagina({ url }: { url: string }) {
     )
   }
 
-  // Sem referer: é assim que o próprio site carrega as imagens
+  // Sem referer: é assim que o próprio site carrega as imagens.
+  // loading="eager": a imagem baixa assim que o capítulo é montado, mesmo
+  // longe da tela — é isso que adianta os capítulos seguintes.
   return (
     <img
       key={tentativa}
       className={estado === 'pronta' ? 'pagina' : 'pagina pagina-carregando'}
       src={url}
       alt=""
-      loading="lazy"
+      loading="eager"
       decoding="async"
       referrerPolicy="no-referrer"
       onLoad={() => setEstado('pronta')}
@@ -67,10 +78,14 @@ type PropsBloco = {
   aoCarregar: (capituloId: number) => void
   aoFicarNoCentro: (numero: number) => void
   aoMarcar: (capitulo: Capitulo, lido: boolean) => void
+  // Modo automático: marca sozinho quando o fim do capítulo passa pela tela
+  automatico: boolean
 }
 
-function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar }: PropsBloco) {
+function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar, automatico }: PropsBloco) {
   const elemento = useRef<HTMLElement>(null)
+  const fimDoCapitulo = useRef<HTMLButtonElement>(null)
+  const jaMarcouSozinho = useRef(false)
   const [paginas, setPaginas] = useState<string[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [tentativa, setTentativa] = useState(0)
@@ -99,16 +114,24 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar }: Prop
     }
   }, [capitulo.id, tentativa, aoCarregar])
 
-  // Monta as imagens só quando o capítulo está perto da tela
+  // Desmonta as imagens só de capítulo que ficou para trás (bem acima da tela)
   useEffect(() => {
     const el = elemento.current
     if (!el) return
 
     const observador = new IntersectionObserver(
       ([entrada]) => {
-        // Ao sair de perto, guarda a altura para o espaço reservado não encolher
-        if (!entrada.isIntersecting) setAlturaGuardada(el.offsetHeight)
-        setPerto(entrada.isIntersecting)
+        if (entrada.isIntersecting) {
+          setPerto(true)
+          return
+        }
+
+        // Longe e ACIMA da tela: guarda a altura e vira espaço reservado.
+        // Longe e abaixo: fica montado, é capítulo adiantado para leitura.
+        if (entrada.boundingClientRect.bottom < 0) {
+          setAlturaGuardada(el.offsetHeight)
+          setPerto(false)
+        }
       },
       { rootMargin: MARGEM_PERTO },
     )
@@ -116,6 +139,23 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar }: Prop
     observador.observe(el)
     return () => observador.disconnect()
   }, [])
+
+  // Modo automático: quando o botão do fim do capítulo aparece na tela, marca
+  // como lido — uma vez só, para o usuário poder desmarcar à mão depois
+  const temPaginas = paginas !== null
+  useEffect(() => {
+    const el = fimDoCapitulo.current
+    if (!el || !automatico || !temPaginas || capitulo.lido || jaMarcouSozinho.current) return
+
+    const observador = new IntersectionObserver(([entrada]) => {
+      if (!entrada.isIntersecting) return
+      jaMarcouSozinho.current = true
+      aoMarcar(capitulo, true)
+    })
+
+    observador.observe(el)
+    return () => observador.disconnect()
+  }, [automatico, temPaginas, capitulo, aoMarcar])
 
   // Avisa quando este capítulo cruza o meio da tela (é o que está sendo lido)
   useEffect(() => {
@@ -168,12 +208,20 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar }: Prop
 
           {paginas?.map((url) => <Pagina key={url} url={url} />)}
 
-          {/* Fim do capítulo: a caixinha "lido". O toque nela não abre o menu */}
+          {/* Fim do capítulo: botão grande de marcar como lido. O toque nele não abre o menu */}
           {paginas !== null && (
-            <label className="marcar-lido" onClick={(e) => e.stopPropagation()}>
-              <input type="checkbox" checked={capitulo.lido} onChange={(e) => aoMarcar(capitulo, e.target.checked)} />
-              <span>Capítulo {capitulo.numero} lido</span>
-            </label>
+            <button
+              ref={fimDoCapitulo}
+              type="button"
+              className={capitulo.lido ? 'marcar-lido marcado' : 'marcar-lido'}
+              aria-pressed={capitulo.lido}
+              onClick={(e) => {
+                e.stopPropagation()
+                aoMarcar(capitulo, !capitulo.lido)
+              }}
+            >
+              {capitulo.lido ? `✓ Capítulo ${capitulo.numero} lido` : `Marcar capítulo ${capitulo.numero} como lido`}
+            </button>
           )}
         </>
       )}
@@ -214,6 +262,10 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
   const capitulosRef = useRef<Capitulo[]>([])
   const carregadosRef = useRef<Set<number>>(new Set())
   const fimVisivel = useRef(false)
+  const indiceLendo = useRef(0)
+
+  // Modo de marcar como lido: ao tocar (padrão) ou automático. Fica guardado no aparelho
+  const [automatico, setAutomatico] = useState(() => lerModoAutomatico())
 
   const [numeroAtual, setNumeroAtual] = useState<number | null>(null)
   const [menuAberto, setMenuAberto] = useState(false)
@@ -229,6 +281,7 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
         const comeco = lista.length > 0 ? indiceInicial(dadosObra, lista) : 0
 
         capitulosRef.current = lista
+        indiceLendo.current = comeco
         setObra(dadosObra)
         setCapitulos(lista)
         setInicio(comeco)
@@ -244,15 +297,19 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
     }
   }, [obraId])
 
-  // Fim da página perto + último capítulo já carregado = monta o próximo.
-  // É chamada nos dois momentos em que isso pode passar a ser verdade: quando
-  // o fim da página entra na tela e quando um capítulo termina de carregar.
+  // Monta o próximo capítulo quando o último montado já carregou E (o fim da
+  // página está perto OU ainda faltam capítulos adiantados à frente do que
+  // está sendo lido). Um de cada vez, para não disparar tudo junto.
+  // É chamada sempre que isso pode passar a ser verdade: o fim da página entra
+  // na tela, um capítulo termina de carregar ou o leitor muda de capítulo.
   const avancarSePuder = useCallback(() => {
     setFim((atual) => {
       const lista = capitulosRef.current
       const ultimo = lista[atual]
-      const pode = fimVisivel.current && ultimo && carregadosRef.current.has(ultimo.id) && atual < lista.length - 1
-      return pode ? atual + 1 : atual
+      if (!ultimo || !carregadosRef.current.has(ultimo.id) || atual >= lista.length - 1) return atual
+
+      const faltaAdiantar = atual < indiceLendo.current + CAPITULOS_ADIANTE
+      return fimVisivel.current || faltaAdiantar ? atual + 1 : atual
     })
   }, [])
 
@@ -294,8 +351,12 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
     (numero: number) => {
       setNumeroAtual(numero)
       salvarPosicao(obraId, numero)
+
+      // Mudou o capítulo em leitura: adianta mais um lá na frente
+      indiceLendo.current = capitulosRef.current.findIndex((c) => c.numero === numero)
+      avancarSePuder()
     },
-    [obraId],
+    [obraId, avancarSePuder],
   )
 
   // Marca ou desmarca um capítulo como lido
@@ -328,6 +389,7 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
 
   // Pular: recomeça a página a partir do capítulo escolhido
   function pularPara(indice: number) {
+    indiceLendo.current = indice
     setInicio(indice)
     setFim(indice)
     setNumeroAtual(capitulos[indice].numero)
@@ -385,6 +447,18 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
               </option>
             ))}
           </select>
+
+          {/* Segunda linha do menu: como os capítulos são marcados como lidos */}
+          <button
+            type="button"
+            className="secundario menu-modo"
+            onClick={() => {
+              salvarModoAutomatico(!automatico)
+              setAutomatico(!automatico)
+            }}
+          >
+            Marcar lido: {automatico ? 'automático, ao passar do fim do capítulo' : 'só ao tocar no botão do fim do capítulo'}
+          </button>
         </div>
       )}
 
@@ -408,6 +482,7 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
           aoCarregar={aoCarregar}
           aoFicarNoCentro={aoFicarNoCentro}
           aoMarcar={aoMarcar}
+          automatico={automatico}
         />
       ))}
 

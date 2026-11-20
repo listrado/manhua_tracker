@@ -80,6 +80,26 @@ export function lerPosicao(obraId: number): number | null {
   }
 }
 
+// Modo de marcar como lido, guardado no aparelho: false = só ao tocar no botão
+// (padrão), true = sozinho, quando o fim do capítulo passa pela tela.
+const CHAVE_MODO = 'manhua-marcar-automatico'
+
+export function lerModoAutomatico(): boolean {
+  try {
+    return localStorage.getItem(CHAVE_MODO) === 'sim'
+  } catch {
+    return false
+  }
+}
+
+export function salvarModoAutomatico(automatico: boolean) {
+  try {
+    localStorage.setItem(CHAVE_MODO, automatico ? 'sim' : 'nao')
+  } catch {
+    // Armazenamento indisponível: vale só até fechar a página
+  }
+}
+
 export function salvarPosicao(obraId: number, numero: number) {
   try {
     localStorage.setItem(chavePosicao(obraId), String(numero))

@@ -254,25 +254,28 @@ button.secundario {
   background: var(--fundo);
 }
 
-/* Caixinha "lido" no fim do capítulo: área de toque grande, para o polegar */
+/* Botão "marcar como lido" no fim do capítulo: largo e alto, para o polegar */
 .marcar-lido {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: center;
-  min-height: 72px;
-  padding: 16px;
-  font-size: 1rem;
-  color: var(--texto);
-  background: var(--fundo);
-  cursor: pointer;
+  display: block;
+  width: calc(100% - 24px);
+  min-height: 64px;
+  margin: 20px 12px;
+  font-size: 1.05rem;
 }
 
-.marcar-lido input {
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  accent-color: var(--destaque);
+/* Já marcado: verde, para dar para ver de relance */
+.marcar-lido.marcado {
+  color: #d9ffe6;
+  background: #1f6b3d;
+}
+
+/* Segunda linha do menu do leitor */
+.menu-modo {
+  flex: 1 0 100%;
+  min-height: 44px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: left;
 }
 
 /* Erro ao salvar: aparece embaixo e some com um toque */
@@ -307,6 +310,7 @@ button.secundario {
   right: 0;
   z-index: 2;
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
   padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
