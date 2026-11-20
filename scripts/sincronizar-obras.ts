@@ -13,7 +13,7 @@ import { CAMPOS_SITE, montarAdaptador, type Site } from './lib/adaptadores.ts'
 import { ler, PASTA_DADOS, sqlLista, sqlNumero, sqlTexto } from './lib/banco.ts'
 import { normalizarTitulo } from './lib/titulos.ts'
 
-type Obra = { id: number; titulo: string; titulos_alternativos: string[]; capa_path: string | null }
+type Obra = { id: number; titulo: string; titulos_alternativos: string[]; capa_path: string | null; total_capitulos: number | null }
 type Fonte = { id: number; obra_id: number; url_obra: string }
 
 // Miniatura: 300 px de largura em WebP. Alvo da especificação: até 60 KB.
@@ -64,7 +64,9 @@ async function principal() {
   const fontes = (
     await ler<Fonte>('fontes', `site_id=eq.${site.id}&ativa=is.true${soNovas}&select=id,obra_id,url_obra&order=id`)
   ).slice(0, limite)
-  const obras = new Map((await ler<Obra>('obras', 'select=id,titulo,titulos_alternativos,capa_path')).map((o) => [o.id, o]))
+  const obras = new Map(
+    (await ler<Obra>('obras', 'select=id,titulo,titulos_alternativos,capa_path,total_capitulos')).map((o) => [o.id, o]),
+  )
   console.log(`${slug}: ${fontes.length} obras para sincronizar`)
 
   // 2. Prepara as pastas e apaga os .sql de uma execução anterior
@@ -77,6 +79,7 @@ async function principal() {
   const { adaptador, rede } = montarAdaptador(site)
   const blocos: string[] = []
   const erros: string[] = []
+  const suspeitas: string[] = []
   let totalCapitulos = 0
   let totalCapas = 0
 
@@ -90,6 +93,20 @@ async function principal() {
       const dados = await adaptador.lerObra(fonte.url_obra)
       const capitulos = await adaptador.listarCapitulos(fonte.url_obra)
       const sql: string[] = []
+
+      // Trava contra obra errada de mesmo nome: se a obra já tem capítulos de
+      // outra fonte e esta traz uma quantidade muito diferente, é quase certo
+      // que é outra história. A fonte é desligada e nada dela entra.
+      const ultimoDaFonte = capitulos.at(-1)?.numero ?? 0
+      const totalConhecido = obra.total_capitulos ?? 0
+      const muitoMenor = ultimoDaFonte < totalConhecido * 0.4
+      const muitoMaior = ultimoDaFonte > totalConhecido * 2.5 + 30
+      if (totalConhecido > 0 && (capitulos.length === 0 || muitoMenor || muitoMaior)) {
+        const motivo = `suspeita de obra diferente: esta fonte vai até o capítulo ${ultimoDaFonte}, a obra tem ${totalConhecido}`
+        suspeitas.push(`${obra.titulo} — ${fonte.url_obra} (${ultimoDaFonte} × ${totalConhecido})`)
+        blocos.push(`update manhua.fontes set ativa = false, erro_ultimo = ${sqlTexto(motivo)}, verificado_em = now() where id = ${fonte.id};`)
+        continue
+      }
 
       // Capa: só baixa se a obra ainda não tem
       let capaPath = obra.capa_path
@@ -165,6 +182,9 @@ async function principal() {
 
   console.log(`Capítulos: ${totalCapitulos} | capas novas: ${totalCapas} | erros: ${erros.length} | arquivos .sql: ${numero}`)
   for (const erro of erros) console.log(`  ERRO ${erro}`)
+
+  console.log(`Fontes desligadas por suspeita de obra diferente: ${suspeitas.length}`)
+  for (const suspeita of suspeitas) console.log(`  SUSPEITA ${suspeita}`)
 }
 
 await principal()

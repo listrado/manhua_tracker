@@ -11,6 +11,7 @@ import {
   salvarPosicao,
   type Capitulo,
   type ObraLeitor,
+  type PaginaCapitulo,
 } from '../lib/dados'
 import { esquecerSenha } from '../lib/senha'
 
@@ -35,9 +36,12 @@ const MARGEM_PROXIMO = '2000px 0px'
 // Tempo que o menu fica visível depois do toque.
 const MENU_MS = 4000
 
-function Pagina({ url }: { url: string }) {
+function Pagina({ pagina }: { pagina: PaginaCapitulo }) {
   const [estado, setEstado] = useState<'carregando' | 'pronta' | 'erro'>('carregando')
   const [tentativa, setTentativa] = useState(0)
+  // Falhou pelo caminho principal: passa a usar a reserva (o proxy de imagem)
+  const [usarReserva, setUsarReserva] = useState(false)
+  const url = usarReserva && pagina.reserva ? pagina.reserva : pagina.url
 
   if (estado === 'erro') {
     return (
@@ -60,7 +64,7 @@ function Pagina({ url }: { url: string }) {
   // longe da tela — é isso que adianta os capítulos seguintes.
   return (
     <img
-      key={tentativa}
+      key={`${tentativa}-${usarReserva}`}
       className={estado === 'pronta' ? 'pagina' : 'pagina pagina-carregando'}
       src={url}
       alt=""
@@ -68,7 +72,11 @@ function Pagina({ url }: { url: string }) {
       decoding="async"
       referrerPolicy="no-referrer"
       onLoad={() => setEstado('pronta')}
-      onError={() => setEstado('erro')}
+      onError={() => {
+        // Primeira falha com reserva disponível: tenta pelo proxy, sem incomodar
+        if (!usarReserva && pagina.reserva) setUsarReserva(true)
+        else setEstado('erro')
+      }}
     />
   )
 }
@@ -86,7 +94,7 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar, automa
   const elemento = useRef<HTMLElement>(null)
   const fimDoCapitulo = useRef<HTMLButtonElement>(null)
   const jaMarcouSozinho = useRef(false)
-  const [paginas, setPaginas] = useState<string[] | null>(null)
+  const [paginas, setPaginas] = useState<PaginaCapitulo[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [tentativa, setTentativa] = useState(0)
   const [perto, setPerto] = useState(true)
@@ -206,7 +214,7 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar, automa
             </div>
           )}
 
-          {paginas?.map((url) => <Pagina key={url} url={url} />)}
+          {paginas?.map((pagina) => <Pagina key={pagina.url} pagina={pagina} />)}
 
           {/* Fim do capítulo: botão grande de marcar como lido. O toque nele não abre o menu */}
           {paginas !== null && (

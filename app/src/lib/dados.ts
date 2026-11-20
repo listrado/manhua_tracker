@@ -37,16 +37,34 @@ export async function carregarCapitulos(obraId: number): Promise<Capitulo[]> {
   }
 }
 
-// URLs das imagens de um capítulo, em ordem. Quem lê o site de origem é a Edge
-// Function paginas-capitulo; o navegador guarda a resposta por um dia.
-export async function carregarPaginas(capituloId: number): Promise<string[]> {
+// Uma página do capítulo: o endereço para mostrar primeiro e, quando existir,
+// um segundo caminho para tentar se o primeiro falhar.
+export type PaginaCapitulo = { url: string; reserva: string | null }
+
+// Imagens de um capítulo, em ordem. Quem lê o site de origem é a Edge Function
+// paginas-capitulo; o navegador guarda a resposta por um dia.
+export async function carregarPaginas(capituloId: number): Promise<PaginaCapitulo[]> {
   const resposta = await fetch(`${URL_FUNCOES}/paginas-capitulo?capitulo_id=${capituloId}`, { headers: { apikey: CHAVE } })
-  const corpo = (await resposta.json()) as { paginas?: string[]; erro?: string; falhas?: string[] }
+  const corpo = (await resposta.json()) as {
+    paginas?: string[]
+    paginas_proxy?: string[] | null
+    precisa_proxy?: boolean
+    erro?: string
+    falhas?: string[]
+  }
 
   if (!resposta.ok || !corpo.paginas) {
     throw new Error([corpo.erro ?? `Erro ${resposta.status}`, ...(corpo.falhas ?? [])].join(' — '))
   }
-  return corpo.paginas
+
+  const proxy = corpo.paginas_proxy ?? null
+  return corpo.paginas.map((direta, i) => {
+    const peloProxy = proxy?.[i] ?? null
+
+    // Site que exige Referer: só o proxy consegue mostrar, então ele vai primeiro.
+    // Nos demais a imagem vem direto do site e o proxy fica de reserva.
+    return corpo.precisa_proxy && peloProxy ? { url: peloProxy, reserva: null } : { url: direta, reserva: peloProxy }
+  })
 }
 
 export class ErroSenhaIncorreta extends Error {}

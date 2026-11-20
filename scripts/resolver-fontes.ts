@@ -90,7 +90,17 @@ async function principal() {
 
     try {
       for (const termo of termosDeBusca(obra.titulo, obra.titulos_alternativos)) {
-        const tentativa = decidir(nomes, await buscarComCache(adaptador, termo))
+        // Um termo que o site recusa (ex.: nome longo demais) não derruba a
+        // obra: passa para o próximo. Só o bloqueio do site interrompe.
+        let resultados: ResultadoBusca[]
+        try {
+          resultados = await buscarComCache(adaptador, termo)
+        } catch (erro) {
+          if (erro instanceof ErroDesafioCloudflare) throw erro
+          continue
+        }
+
+        const tentativa = decidir(nomes, resultados)
         termoUsado = termo
 
         // Guarda a melhor situação vista: vincular > confirmar > nada

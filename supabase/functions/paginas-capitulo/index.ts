@@ -44,6 +44,26 @@ const http: Http = async (url, pedido = {}) => {
   return corpo
 }
 
+// Monta o endereço de cada imagem passando pelo proxy (Cloudflare Worker), já
+// assinado. O Worker só atende endereço com assinatura válida, então é aqui —
+// e só aqui — que se decide o que pode passar por ele.
+async function assinarParaProxy(slug: string, paginas: string[]): Promise<string[] | null> {
+  const segredo = Deno.env.get('PROXY_SEGREDO')
+  const proxy = Deno.env.get('PROXY_URL')
+  if (!segredo || !proxy) return null
+
+  const chave = await crypto.subtle.importKey('raw', new TextEncoder().encode(segredo), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+
+  return Promise.all(
+    paginas.map(async (url) => {
+      // HMAC-SHA256 de "<slug>\n<url>", em hexadecimal
+      const bytes = new Uint8Array(await crypto.subtle.sign('HMAC', chave, new TextEncoder().encode(`${slug}\n${url}`)))
+      const assinatura = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+      return `${proxy}/img?u=${encodeURIComponent(url)}&s=${encodeURIComponent(slug)}&t=${assinatura}`
+    }),
+  )
+}
+
 function montarAdaptador(site: Site): Adaptador {
   return criarAdaptador(site, http)
 }
@@ -92,8 +112,18 @@ Deno.serve(async (pedido) => {
       const paginas = await montarAdaptador(linha.fontes.sites).listarPaginas(linha.url)
       if (paginas.length > 0) {
         // A lista de um capítulo publicado não muda: o navegador guarda por um dia
+        // paginas: endereço direto no site de origem.
+        // paginas_proxy: o mesmo, passando pelo proxy (para site que exige
+        // Referer e para guardar a imagem no aparelho).
+        const site = linha.fontes.sites
         return responder(
-          { capitulo_id: Number(capituloId), paginas, site: linha.fontes.sites.slug, precisa_proxy: linha.fontes.sites.precisa_proxy },
+          {
+            capitulo_id: Number(capituloId),
+            paginas,
+            paginas_proxy: await assinarParaProxy(site.slug, paginas),
+            site: site.slug,
+            precisa_proxy: site.precisa_proxy,
+          },
           200,
           { 'Cache-Control': 'public, max-age=86400' },
         )

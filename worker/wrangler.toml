@@ -1,0 +1,22 @@
+# Proxy de imagem do ListradoReader. Publicar com:  npx wrangler deploy
+# O segredo do HMAC NÃO fica aqui:  npx wrangler secret put PROXY_SEGREDO
+name = "manhua-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+# Quem pode usar o proxy pelo navegador
+ORIGENS_PERMITIDAS = "https://listrado.github.io,http://localhost:5173,http://127.0.0.1:5173"
+
+# Para cada site: o Referer que as imagens exigem e os domínios de imagem aceitos
+# (o domínio e qualquer subdomínio dele). Site novo ou CDN nova entra aqui.
+SITES = '''
+{
+  "manhuaplus":        { "referer": "https://manhuaplus.org/",     "dominios": ["manhuaplus.cc", "manhuaplus.org"] },
+  "manganato":         { "referer": "https://www.manganato.gg/",   "dominios": ["2xstorage.com"] },
+  "kingofshojo":       { "referer": "https://kingofshojo.com/",    "dominios": ["kingofshojo.com"] },
+  "arenascans":        { "referer": "https://arenascan.com/",      "dominios": ["arenascan.com"] },
+  "manhwa-manhua-top": { "referer": "https://manhuatop.org/",      "dominios": ["manhuatop.org"] }
+}
+'''
