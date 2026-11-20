@@ -60,6 +60,21 @@ npm run dev
 
 Entram nas fases 5 e 6.
 
+## Para depois
+
+Pedidos do dono que ficaram anotados, ainda sem implementação:
+
+- **Filtro por gênero** na biblioteca. Os sites listam os gêneros de cada obra; falta
+  o adaptador ler esse dado e o banco guardar.
+- **Recomendações**: sugerir obras ainda não lidas, parecidas com as que já são lidas
+  (os sites têm seção de recomendados e os gêneros ajudam a medir semelhança).
+- **Verificação automática de capítulos novos** (função `verificar-novos` + agendamento).
+  Hoje os capítulos só são atualizados rodando `scripts/sincronizar-obras.ts` à mão; o
+  destaque "hot" depende disso para aparecer.
+- **Leitura offline** (proxy de imagem no Cloudflare + download para o aparelho).
+- **Links das obras dos outros sites** (Manganato, Manganelo, MANHUAUS, Kingofshojo…):
+  cada site precisa do seu adaptador.
+
 ## Segurança
 
 - O site e a chave anon são públicos. Quem protege os dados é a RLS: todas as tabelas

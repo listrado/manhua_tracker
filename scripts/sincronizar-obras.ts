@@ -102,11 +102,15 @@ async function principal() {
         }
       }
 
-      // Obra: outros nomes, capa e total de capítulos (nunca diminui)
+      // Obra: outros nomes e capa
       const ultimo = capitulos.at(-1)?.numero ?? null
       sql.push(
-        `update manhua.obras set titulos_alternativos = ${sqlLista(juntarNomes(obra, dados.titulo, dados.titulosAlternativos))}, capa_path = coalesce(capa_path, ${sqlTexto(capaPath)}), total_capitulos = greatest(coalesce(total_capitulos, 0), ${sqlNumero(ultimo ?? 0)}), sem_fonte = false where id = ${obra.id};`,
+        `update manhua.obras set titulos_alternativos = ${sqlLista(juntarNomes(obra, dados.titulo, dados.titulosAlternativos))}, capa_path = coalesce(capa_path, ${sqlTexto(capaPath)}), sem_fonte = false where id = ${obra.id};`,
       )
+
+      // Total de capítulos, selo "novo" e destaque "hot": a função do banco
+      // compara com o total anterior e decide se houve lançamento
+      sql.push(`select manhua.registrar_lancamento(${obra.id}, ${sqlNumero(ultimo)});`)
 
       if (capitulos.length > 0) {
         const valores = capitulos.map((c) => `(${c.numero}, ${sqlTexto(c.titulo)}, ${sqlTexto(c.url)})`).join(', ')

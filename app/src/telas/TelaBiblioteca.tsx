@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Logo } from '../componentes/Logo'
+import {
+  CRITERIOS,
+  estaQuente,
+  fracaoLida,
+  lerOrdenacao,
+  ordenar,
+  salvarOrdenacao,
+  type Criterio,
+  type Ordenacao,
+} from '../lib/ordenacao'
 import { supabase } from '../lib/supabase'
 
-// Versão inicial da biblioteca: só leitura. Lista as obras em duas abas, com
-// busca e capa; tocar numa obra abre o leitor. Ordenações, aba "Confirmar",
-// adicionar obra e as ações por obra entram na fase 4.
+// Biblioteca: lista as obras em duas abas, com busca, ordenação e capa; tocar
+// numa obra abre o leitor. Obras "hot" (capítulo novo em obra que estava em
+// dia) ficam no topo por uma semana. Aba "Confirmar", adicionar obra e as
+// ações por obra ainda não existem.
 
 type Fonte = { url_obra: string; prioridade: number; ativa: boolean }
 
@@ -17,6 +29,8 @@ type Obra = {
   total_capitulos: number | null
   capa_path: string | null
   tem_novo: boolean
+  ultima_leitura_em: string | null
+  quente_ate: string | null
   fontes: Fonte[]
 }
 
@@ -48,12 +62,17 @@ function linkDaObra(obra: Obra): string | null {
 
 function ItemObra({ obra }: { obra: Obra }) {
   const link = linkDaObra(obra)
+  const fracao = fracaoLida(obra)
+  const quente = estaQuente(obra)
+
+  // "cap. 39 / 120 · 32%"
   const progresso =
     obra.capitulo_atual === null
       ? obra.total_capitulos
         ? `${obra.total_capitulos} capítulos`
         : 'sem capítulo lido'
-      : `cap. ${obra.capitulo_atual}${obra.total_capitulos ? ` / ${obra.total_capitulos}` : ''}`
+      : `cap. ${obra.capitulo_atual}${obra.total_capitulos ? ` / ${obra.total_capitulos}` : ''}` +
+        (fracao !== null ? ` · ${Math.round(fracao * 100)}%` : '')
 
   const conteudo = (
     <>
@@ -67,7 +86,8 @@ function ItemObra({ obra }: { obra: Obra }) {
         <span className="obra-titulo">{obra.titulo}</span>
         <span className="suave">
           {progresso}
-          {obra.tem_novo && <span className="selo">novo</span>}
+          {quente && <span className="selo selo-hot">hot</span>}
+          {obra.tem_novo && !quente && <span className="selo">novo</span>}
         </span>
         {!link && <span className="suave pequeno">link ainda não encontrado</span>}
       </div>
@@ -104,6 +124,13 @@ export function TelaBiblioteca() {
   const [erro, setErro] = useState<string | null>(null)
   const [aba, setAba] = useState<Aba>('lendo')
   const [busca, setBusca] = useState('')
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>(() => lerOrdenacao())
+
+  // Troca a ordenação e guarda a escolha no aparelho
+  function mudarOrdenacao(nova: Ordenacao) {
+    setOrdenacao(nova)
+    salvarOrdenacao(nova)
+  }
 
   useEffect(() => {
     if (!supabase) return
@@ -113,7 +140,7 @@ export function TelaBiblioteca() {
     supabase
       .from('obras')
       .select(
-        'id,titulo,titulo_normalizado,titulos_alternativos,status,capitulo_atual,total_capitulos,capa_path,tem_novo,fontes(url_obra,prioridade,ativa)',
+        'id,titulo,titulo_normalizado,titulos_alternativos,status,capitulo_atual,total_capitulos,capa_path,tem_novo,ultima_leitura_em,quente_ate,fontes(url_obra,prioridade,ativa)',
       )
       .order('titulo')
       .then(({ data, error }) => {
@@ -128,21 +155,28 @@ export function TelaBiblioteca() {
   }, [])
 
   // Obras da aba aberta, filtradas pela busca (título e títulos alternativos)
+  // e na ordem escolhida
   const visiveis = useMemo(() => {
     const termo = normalizar(busca)
 
-    return (obras ?? []).filter((obra) => {
+    const filtradas = (obras ?? []).filter((obra) => {
       if (obra.status !== aba) return false
       if (termo === '') return true
       return obra.titulo_normalizado.includes(termo) || obra.titulos_alternativos.some((t) => normalizar(t).includes(termo))
     })
-  }, [obras, aba, busca])
+
+    return ordenar(filtradas, ordenacao)
+  }, [obras, aba, busca, ordenacao])
 
   const total = (id: Aba) => (obras ?? []).filter((o) => o.status === id).length
 
   return (
     <main className="biblioteca">
       <header className="topo">
+        <h1 className="cabecalho-logo">
+          <Logo />
+        </h1>
+
         <input
           type="search"
           placeholder="Buscar obra…"
@@ -158,6 +192,36 @@ export function TelaBiblioteca() {
             </button>
           ))}
         </nav>
+
+        {/* Ordenação: o critério e o sentido (de cima para baixo ou o contrário) */}
+        <div className="ordenacao">
+          <select
+            aria-label="Ordenar por"
+            value={ordenacao.criterio}
+            onChange={(e) => {
+              const criterio = e.target.value as Criterio
+              const inicial = CRITERIOS.find((c) => c.id === criterio)?.sentidoInicial ?? 'crescente'
+              mudarOrdenacao({ criterio, sentido: inicial })
+            }}
+          >
+            {CRITERIOS.map((c) => (
+              <option key={c.id} value={c.id}>
+                Ordenar: {c.nome}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            className="secundario sentido"
+            aria-label={ordenacao.sentido === 'crescente' ? 'Ordem crescente. Tocar para inverter' : 'Ordem decrescente. Tocar para inverter'}
+            onClick={() =>
+              mudarOrdenacao({ ...ordenacao, sentido: ordenacao.sentido === 'crescente' ? 'decrescente' : 'crescente' })
+            }
+          >
+            {ordenacao.sentido === 'crescente' ? '↑ menor primeiro' : '↓ maior primeiro'}
+          </button>
+        </div>
       </header>
 
       {erro && <p className="erro aviso">Não foi possível carregar: {erro}</p>}

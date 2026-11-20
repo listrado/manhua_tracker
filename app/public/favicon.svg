@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Livrinho aberto: página esquerda vermelha, direita azul (cores da logo) -->
+  <rect width="64" height="64" rx="14" fill="#0f1115"/>
+  <path d="M32 18c-5-4-12-5-20-4v32c8-1 15 0 20 4z" fill="#e5484d"/>
+  <path d="M32 18c5-4 12-5 20-4v32c-8-1-15 0-20 4z" fill="#3b82f6"/>
+  <path d="M32 18v32" stroke="#0f1115" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M17 24c4-.3 7 .2 10 1.6M17 31c4-.3 7 .2 10 1.6M37 25.600c3-1.400 6-1.900 10-1.600M37 32.600c3-1.400 6-1.900 10-1.600" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="2" stroke-linecap="round"/>
+</svg>
