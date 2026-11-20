@@ -3,6 +3,7 @@
 // e passa a valer para todos.
 import { criarManganato } from './manganato.ts'
 import { criarManhuaplus } from './manhuaplus.ts'
+import { criarManhuatop } from './manhuatop.ts'
 import { criarThemesia } from './themesia.ts'
 import type { Adaptador, Http } from './tipos.ts'
 
@@ -17,6 +18,7 @@ export function criarAdaptador(site: SiteCadastrado, http: Http): Adaptador {
   if (site.adaptador === 'manhuaplus') return criarManhuaplus(base, http)
   if (site.adaptador === 'manganato') return criarManganato(site.slug, base, http)
   if (site.adaptador === 'themesia') return criarThemesia(site.slug, base, http)
+  if (site.adaptador === 'manhuatop') return criarManhuatop(site.slug, base, http)
 
   throw new Error(`Ainda não existe adaptador "${site.adaptador}" (site ${site.slug})`)
 }

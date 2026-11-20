@@ -12,6 +12,12 @@ import {
   extrairPaginasNato,
 } from '../../supabase/functions/_shared/adaptadores/manganato.ts'
 import {
+  extrairBuscaManhuatop,
+  extrairCapitulosManhuatop,
+  extrairObraManhuatop,
+  extrairPaginasManhuatop,
+} from '../../supabase/functions/_shared/adaptadores/manhuatop.ts'
+import {
   extrairBuscaThemesia,
   extrairCapitulosThemesia,
   extrairObraThemesia,
@@ -82,6 +88,39 @@ test('themesia: busca, obra, capítulos e páginas', () => {
   const paginas = extrairPaginasThemesia(fixture('themesia-capitulo.html'))
   assert.equal(paginas.length, 138)
   assert.equal(paginas[0], 'https://cdn.kingofshojo.com/king-bucket/145170/177/3776c7e3e6d9.webp')
+})
+
+test('manhua top: busca, obra, capítulos (uma página) e páginas', () => {
+  const TOP = 'https://manhuatop.org'
+
+  // Busca
+  const resultados = extrairBuscaManhuatop(fixture('manhuatop-busca.html'), TOP)
+  assert.deepEqual(resultados[0], {
+    titulo: 'The Tutorial is Too Hard',
+    url: 'https://manhuatop.org/manhua/the-tutorial-is-too-hard-mh/',
+    capaUrl: 'https://cache.manhuatop.org/images/2021/08/post_77752_image.jpg',
+  })
+
+  // Obra (a página da aba de capítulos também traz título e outros nomes)
+  const obra = extrairObraManhuatop(fixture('manhuatop-obra.html'), TOP)
+  assert.equal(obra.titulo, 'The Tutorial is Too Hard')
+  assert.ok(obra.titulosAlternativos.includes('The Tutorial Is Too Tough!'))
+
+  // Capítulos: 50 por página, e o site avisa que tem mais
+  const { capitulos, temMais } = extrairCapitulosManhuatop(fixture('manhuatop-obra.html'), TOP)
+  const numeros = new Set(capitulos.map((c) => c.numero))
+  assert.ok(numeros.has(297) && numeros.has(248))
+  assert.equal(temMais, true)
+  assert.equal(
+    capitulos.find((c) => c.numero === 297)?.url,
+    'https://manhuatop.org/manhua/the-tutorial-is-too-hard-mh/chapter-297/',
+  )
+
+  // Páginas, na ordem do índice
+  const paginas = extrairPaginasManhuatop(fixture('manhuatop-capitulo.html'))
+  assert.equal(paginas.length, 81)
+  assert.ok(paginas[0].endsWith('/chapter-297/ch-297-img-1.jpg'))
+  assert.ok(paginas[80].endsWith('/chapter-297/ch-297-img-81.jpg'))
 })
 
 test('site com motor desconhecido dá erro claro', () => {

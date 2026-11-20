@@ -66,9 +66,16 @@ export function decidir(nomesDaObra: string[], resultados: ResultadoBusca[]): De
   return { tipo: 'confirmar', candidatos: pontuados.slice(0, 3) }
 }
 
+// Quantos nomes alternativos entram na busca. As obras acumulam até 15 nomes
+// (em várias línguas); tentar todos em todo site levaria horas.
+export const MAXIMO_ALTERNATIVOS_NA_BUSCA = 2
+
 // Termos a tentar, em ordem: título completo, título encurtado (4 primeiras
-// palavras) e depois cada título alternativo.
+// palavras) e depois os primeiros nomes alternativos escritos em alfabeto
+// latino (os sites buscam em inglês; nome em coreano ou chinês não acha nada).
 export function termosDeBusca(titulo: string, alternativos: string[]): string[] {
   const curto = titulo.split(/\s+/).slice(0, 4).join(' ')
-  return [...new Set([titulo, curto, ...alternativos])].filter((t) => t.trim() !== '')
+  const latinos = alternativos.filter((nome) => /^[\x20-\x7e’‘“”]+$/.test(nome) && /[a-z]/i.test(nome))
+
+  return [...new Set([titulo, curto, ...latinos.slice(0, MAXIMO_ALTERNATIVOS_NA_BUSCA)])].filter((t) => t.trim() !== '')
 }
