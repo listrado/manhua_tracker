@@ -2,6 +2,7 @@ import { useRota } from './lib/rota'
 import { useSessao } from './lib/sessao'
 import { supabaseConfigurado } from './lib/supabase'
 import { TelaBiblioteca } from './telas/TelaBiblioteca'
+import { TelaLeitor } from './telas/TelaLeitor'
 import { TelaLogin } from './telas/TelaLogin'
 
 const EXIGIR_LOGIN: boolean = false
@@ -39,7 +40,11 @@ export default function App() {
     }
   }
 
-  // O leitor (rota "obra") entra na fase 5; por enquanto tudo leva à biblioteca
-  void rota
+  // #/obra/<id> abre o leitor; qualquer outra rota é a biblioteca.
+  // A key faz o leitor recomeçar do zero ao trocar de obra.
+  if (rota.tela === 'obra') {
+    return <TelaLeitor key={rota.obraId} obraId={rota.obraId} />
+  }
+
   return <TelaBiblioteca />
 }

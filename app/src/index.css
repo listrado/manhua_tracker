@@ -211,3 +211,111 @@ button.secundario {
   background: var(--destaque);
   border-radius: 999px;
 }
+
+/* ---------- Leitor ---------- */
+
+.leitor {
+  max-width: 900px;
+  margin: 0 auto;
+  background: #000;
+  min-height: 100dvh;
+}
+
+/* As imagens ocupam a largura da tela, sem espaço entre elas */
+.pagina {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Enquanto não carrega, a imagem reserva espaço: sem isso todas teriam altura
+   zero, o navegador baixaria o capítulo inteiro de uma vez e a rolagem pularia */
+.pagina-carregando {
+  min-height: 70vh;
+  background: var(--cartao);
+}
+
+.pagina-erro {
+  display: block;
+  width: 100%;
+  min-height: 30vh;
+  color: var(--texto-suave);
+  background: var(--cartao);
+  border-radius: 0;
+}
+
+.separador {
+  margin: 0;
+  padding: 28px 16px 20px;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--texto-suave);
+  background: var(--fundo);
+}
+
+.fim-capitulo {
+  margin: 0;
+  padding: 20px 16px 8px;
+  font-size: 0.85rem;
+  text-align: center;
+  background: var(--fundo);
+}
+
+.anterior {
+  display: block;
+  width: calc(100% - 24px);
+  margin: calc(12px + env(safe-area-inset-top)) 12px 0;
+}
+
+.fim-leitor {
+  min-height: 1px;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--fundo);
+}
+
+/* Menu flutuante: aparece com um toque e some sozinho */
+.menu-leitor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  background: rgb(15 17 21 / 0.94);
+  border-bottom: 1px solid var(--borda);
+}
+
+.menu-voltar {
+  flex: none;
+  padding: 10px 4px;
+  color: var(--texto);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.menu-titulo {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--texto-suave);
+  font-size: 0.875rem;
+}
+
+.menu-leitor select {
+  flex: none;
+  max-width: 45%;
+  min-height: 40px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--texto);
+  background: var(--cartao);
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+}

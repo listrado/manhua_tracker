@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 // Versão inicial da biblioteca: só leitura. Lista as obras em duas abas, com
-// busca, capa e link para o site de origem. Ordenações, aba "Confirmar",
-// adicionar obra e as ações por obra entram na fase 4; o leitor, na fase 5.
+// busca e capa; tocar numa obra abre o leitor. Ordenações, aba "Confirmar",
+// adicionar obra e as ações por obra entram na fase 4.
 
 type Fonte = { url_obra: string; prioridade: number; ativa: boolean }
 
@@ -74,7 +74,18 @@ function ItemObra({ obra }: { obra: Obra }) {
     </>
   )
 
-  // Enquanto o leitor não existe, tocar na obra abre o site de origem
+  // Obra com capítulos cadastrados abre no leitor do app
+  if (obra.total_capitulos) {
+    return (
+      <li>
+        <a className="obra" href={`#/obra/${obra.id}`}>
+          {conteudo}
+        </a>
+      </li>
+    )
+  }
+
+  // Sem capítulos ainda: se já tem link, abre o site de origem
   return (
     <li>
       {link ? (
