@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Logo } from '../componentes/Logo'
 import {
   CRITERIOS,
+  estaEmDia,
   estaQuente,
   fracaoLida,
+  lerEsconderEmDia,
   lerOrdenacao,
   ordenar,
+  salvarEsconderEmDia,
   salvarOrdenacao,
   type Criterio,
   type Ordenacao,
@@ -125,6 +128,7 @@ export function TelaBiblioteca() {
   const [aba, setAba] = useState<Aba>('lendo')
   const [busca, setBusca] = useState('')
   const [ordenacao, setOrdenacao] = useState<Ordenacao>(() => lerOrdenacao())
+  const [esconderEmDia, setEsconderEmDia] = useState(() => lerEsconderEmDia())
 
   // Troca a ordenação e guarda a escolha no aparelho
   function mudarOrdenacao(nova: Ordenacao) {
@@ -161,12 +165,13 @@ export function TelaBiblioteca() {
 
     const filtradas = (obras ?? []).filter((obra) => {
       if (obra.status !== aba) return false
+      if (esconderEmDia && estaEmDia(obra)) return false
       if (termo === '') return true
       return obra.titulo_normalizado.includes(termo) || obra.titulos_alternativos.some((t) => normalizar(t).includes(termo))
     })
 
     return ordenar(filtradas, ordenacao)
-  }, [obras, aba, busca, ordenacao])
+  }, [obras, aba, busca, ordenacao, esconderEmDia])
 
   const total = (id: Aba) => (obras ?? []).filter((o) => o.status === id).length
 
@@ -177,13 +182,28 @@ export function TelaBiblioteca() {
           <Logo />
         </h1>
 
-        <input
-          type="search"
-          placeholder="Buscar obra…"
-          aria-label="Buscar obra"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-        />
+        <div className="linha-busca">
+          <input
+            type="search"
+            placeholder="Buscar obra…"
+            aria-label="Buscar obra"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+
+          {/* Esconde as obras em que já se leu tudo o que foi lançado */}
+          <button
+            type="button"
+            className={esconderEmDia ? 'secundario filtro ligado' : 'secundario filtro'}
+            aria-pressed={esconderEmDia}
+            onClick={() => {
+              salvarEsconderEmDia(!esconderEmDia)
+              setEsconderEmDia(!esconderEmDia)
+            }}
+          >
+            {esconderEmDia ? '✓ Sem em dia' : 'Esconder em dia'}
+          </button>
+        </div>
 
         <nav className="abas">
           {ABAS.map((a) => (

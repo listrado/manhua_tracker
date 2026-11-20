@@ -36,6 +36,31 @@ export function estaQuente(obra: ObraOrdenavel, agora = Date.now()): boolean {
   return obra.quente_ate !== null && new Date(obra.quente_ate).getTime() > agora
 }
 
+// Em dia: já leu até o último capítulo lançado. Sem total conhecido não dá
+// para afirmar, então a obra não conta como em dia.
+export function estaEmDia(obra: ObraOrdenavel): boolean {
+  return Boolean(obra.total_capitulos) && obra.capitulo_atual !== null && obra.capitulo_atual >= obra.total_capitulos!
+}
+
+// Filtro "esconder em dia", guardado no aparelho.
+const CHAVE_EM_DIA = 'manhua-esconder-em-dia'
+
+export function lerEsconderEmDia(): boolean {
+  try {
+    return localStorage.getItem(CHAVE_EM_DIA) === 'sim'
+  } catch {
+    return false
+  }
+}
+
+export function salvarEsconderEmDia(esconder: boolean) {
+  try {
+    localStorage.setItem(CHAVE_EM_DIA, esconder ? 'sim' : 'nao')
+  } catch {
+    // Armazenamento indisponível: vale só até fechar a página
+  }
+}
+
 // Valor numérico de cada obra no critério; null = "não tem esse dado".
 function valor(obra: ObraOrdenavel, criterio: Criterio): number | null {
   if (criterio === 'porcentagem') return fracaoLida(obra)

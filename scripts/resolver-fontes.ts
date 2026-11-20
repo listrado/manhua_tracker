@@ -8,7 +8,8 @@
 // As respostas da busca ficam em dados/cache/, então rodar de novo não repete
 // os pedidos já feitos ao site.
 //
-// Uso: node resolver-fontes.ts manhuaplus [limite]
+// Uso: node resolver-fontes.ts manhuaplus              (obras que vieram do site)
+//      node resolver-fontes.ts manhuaplus sem-fonte    (obras sem fonte em site nenhum)
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -36,8 +37,9 @@ async function buscarComCache(adaptador: Adaptador, termo: string): Promise<Resu
 
 async function principal() {
   const slug = process.argv[2]
-  const limite = Number(process.argv[3] ?? Infinity)
-  if (!slug) throw new Error('Informe o site. Ex.: node resolver-fontes.ts manhuaplus')
+  const modo = process.argv[3] === 'sem-fonte' ? 'sem-fonte' : 'do-site'
+  const limite = Number(process.argv[4] ?? Infinity)
+  if (!slug) throw new Error('Informe o site. Ex.: node resolver-fontes.ts manhuaplus [sem-fonte] [limite]')
 
   // 1. Lê o site, as obras, de qual site cada obra veio e as fontes já vinculadas
   const [site] = await ler<Site>('sites', `slug=eq.${slug}&select=${CAMPOS_SITE}`)
@@ -47,10 +49,17 @@ async function principal() {
   const origens = await ler<{ obra_id: number }>('importacao', `site_slug=eq.${slug}&obra_id=not.is.null&select=obra_id`)
   const fontes = await ler<{ obra_id: number }>('fontes', `site_id=eq.${site.id}&select=obra_id`)
 
-  // 2. Fica só com as obras que apareceram neste site e ainda não têm fonte nele
+  // 2. Escolhe as obras a procurar:
+  //    padrão ........ as que apareceram neste site e ainda não têm fonte nele;
+  //    "sem-fonte" ... as que não têm fonte em site NENHUM (vieram de sites sem
+  //                    adaptador; vale tentar achar a mesma obra aqui).
   const vieramDoSite = new Set(origens.map((o) => o.obra_id))
   const jaTemFonte = new Set(fontes.map((f) => f.obra_id))
-  const pendentes = obras.filter((o) => vieramDoSite.has(o.id) && !jaTemFonte.has(o.id)).slice(0, limite)
+  const comAlgumaFonte = new Set((await ler<{ obra_id: number }>('fontes', 'select=obra_id')).map((f) => f.obra_id))
+
+  const pendentes = obras
+    .filter((o) => (modo === 'sem-fonte' ? !comAlgumaFonte.has(o.id) : vieramDoSite.has(o.id) && !jaTemFonte.has(o.id)))
+    .slice(0, limite)
   console.log(`${slug}: ${pendentes.length} obras para procurar`)
 
   // 3. Procura cada uma; para na primeira tentativa que der resultado útil

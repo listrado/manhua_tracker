@@ -248,6 +248,32 @@ button.secundario {
   color: #4f9dff;
 }
 
+/* Busca com o botão de filtro ao lado */
+.linha-busca {
+  display: flex;
+  gap: 8px;
+}
+
+.linha-busca input {
+  flex: 1;
+  min-width: 0;
+}
+
+.filtro {
+  flex: none;
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.filtro.ligado {
+  color: #fff;
+  background: var(--destaque);
+  border-color: var(--destaque);
+}
+
 /* Ordenação: critério à esquerda, sentido à direita */
 .ordenacao {
   display: flex;
