@@ -1,15 +1,18 @@
+import { useState } from 'react'
 import { useRota } from './lib/rota'
-import { useSessao } from './lib/sessao'
+import { lerSenhaGuardada } from './lib/senha'
 import { supabaseConfigurado } from './lib/supabase'
 import { TelaBiblioteca } from './telas/TelaBiblioteca'
 import { TelaLeitor } from './telas/TelaLeitor'
-import { TelaLogin } from './telas/TelaLogin'
-
-const EXIGIR_LOGIN: boolean = false
+import { TelaSenha } from './telas/TelaSenha'
 
 export default function App() {
-  const sessao = useSessao()
   const rota = useRota()
+
+  // O app pede a senha de acesso uma vez por aparelho (decisão do dono: senha
+  // em vez de login com conta). A tela de login antiga (TelaLogin + useSessao)
+  // continua no código, sem uso, caso um dia volte a ter conta.
+  const [liberado, setLiberado] = useState(() => lerSenhaGuardada() !== null)
 
   // Build sem as variáveis do Supabase: avisa em vez de dar tela branca
   if (!supabaseConfigurado) {
@@ -25,25 +28,15 @@ export default function App() {
     )
   }
 
-  // Por enquanto o app abre SEM login (decisão do dono): a leitura do banco é
-  // aberta e a escrita continua fechada. Para voltar a exigir login, basta
-  // trocar EXIGIR_LOGIN para true — a tela de login e a sessão já estão prontas.
-  if (EXIGIR_LOGIN) {
-    // Esperando o Supabase devolver a sessão guardada
-    if (sessao.estado === 'carregando') {
-      return <main className="tela-centro suave">Carregando…</main>
-    }
-
-    // Sem login não existe nenhuma outra tela
-    if (sessao.estado === 'deslogado') {
-      return <TelaLogin />
-    }
+  // Sem a senha não existe nenhuma outra tela
+  if (!liberado) {
+    return <TelaSenha aoEntrar={() => setLiberado(true)} />
   }
 
   // #/obra/<id> abre o leitor; qualquer outra rota é a biblioteca.
   // A key faz o leitor recomeçar do zero ao trocar de obra.
   if (rota.tela === 'obra') {
-    return <TelaLeitor key={rota.obraId} obraId={rota.obraId} />
+    return <TelaLeitor key={rota.obraId} obraId={rota.obraId} aoPerderAcesso={() => setLiberado(false)} />
   }
 
   return <TelaBiblioteca />

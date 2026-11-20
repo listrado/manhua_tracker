@@ -1,4 +1,5 @@
 // Leitura dos dados que o leitor usa: a obra, os capítulos e as imagens.
+import { lerSenhaGuardada } from './senha'
 import { supabase } from './supabase'
 
 export type ObraLeitor = { id: number; titulo: string; capitulo_atual: number | null }
@@ -48,8 +49,26 @@ export async function carregarPaginas(capituloId: number): Promise<string[]> {
   return corpo.paginas
 }
 
+export class ErroSenhaIncorreta extends Error {}
+
+// Marca ou desmarca um capítulo como lido no banco. A senha de acesso vai
+// junto: é o banco que decide se a gravação vale.
+export async function marcarLido(capituloId: number, lido: boolean): Promise<void> {
+  if (!supabase) throw new Error('Supabase não configurado')
+
+  const { error } = await supabase.rpc('marcar_lido', {
+    p_senha: lerSenhaGuardada() ?? '',
+    p_capitulo_id: capituloId,
+    p_lido: lido,
+    p_em: new Date().toISOString(),
+  })
+
+  // 28P01 é o código que a função usa para "senha incorreta"
+  if (error?.code === '28P01') throw new ErroSenhaIncorreta(error.message)
+  if (error) throw new Error(error.message)
+}
+
 // Posição de leitura guardada no aparelho (o número do capítulo em que parou).
-// Sem login não dá para gravar no banco; isso entra junto com "marcar lido".
 const chavePosicao = (obraId: number) => `manhua-posicao-${obraId}`
 
 export function lerPosicao(obraId: number): number | null {

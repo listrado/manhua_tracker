@@ -94,7 +94,8 @@ async function principal() {
           if (!existsSync(arquivoCapa)) {
             writeFileSync(arquivoCapa, await gerarMiniatura(await rede.baixar(dados.capaUrl, site.referer ?? undefined)))
           }
-          capaPath = `${obra.id}.webp`
+          // No Storage o upload recursivo mantém o nome da pasta: capas/<id>.webp
+          capaPath = `capas/${obra.id}.webp`
           totalCapas++
         } catch (erro) {
           erros.push(`${obra.titulo}: capa — ${erro instanceof Error ? erro.message : erro}`)

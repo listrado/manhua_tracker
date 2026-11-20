@@ -254,12 +254,37 @@ button.secundario {
   background: var(--fundo);
 }
 
-.fim-capitulo {
-  margin: 0;
-  padding: 20px 16px 8px;
-  font-size: 0.85rem;
-  text-align: center;
+/* Caixinha "lido" no fim do capítulo: área de toque grande, para o polegar */
+.marcar-lido {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  min-height: 72px;
+  padding: 16px;
+  font-size: 1rem;
+  color: var(--texto);
   background: var(--fundo);
+  cursor: pointer;
+}
+
+.marcar-lido input {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  accent-color: var(--destaque);
+}
+
+/* Erro ao salvar: aparece embaixo e some com um toque */
+.aviso-flutuante {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 3;
+  font-weight: 500;
+  text-align: left;
+  background: #7a2630;
 }
 
 .anterior {

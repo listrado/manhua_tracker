@@ -3,16 +3,19 @@ import {
   carregarCapitulos,
   carregarObra,
   carregarPaginas,
+  ErroSenhaIncorreta,
   lerPosicao,
+  marcarLido,
   salvarPosicao,
   type Capitulo,
   type ObraLeitor,
 } from '../lib/dados'
+import { esquecerSenha } from '../lib/senha'
 
 // Leitor contínuo, versão online: os capítulos aparecem um embaixo do outro e o
 // próximo é carregado sozinho quando o fim se aproxima. As imagens vêm direto
-// do site de origem. Download para ler offline e "marcar lido" entram depois
-// (dependem do proxy de imagem e de poder gravar no banco).
+// do site de origem. No fim de cada capítulo há a caixinha "lido". O download
+// para ler offline entra depois (depende do proxy de imagem).
 
 // Distância da tela em que um capítulo conta como "perto" e fica montado.
 // Longe disso ele vira um espaço reservado com a mesma altura, para o Safari
@@ -63,9 +66,10 @@ type PropsBloco = {
   capitulo: Capitulo
   aoCarregar: (capituloId: number) => void
   aoFicarNoCentro: (numero: number) => void
+  aoMarcar: (capitulo: Capitulo, lido: boolean) => void
 }
 
-function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro }: PropsBloco) {
+function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar }: PropsBloco) {
   const elemento = useRef<HTMLElement>(null)
   const [paginas, setPaginas] = useState<string[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -164,7 +168,13 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro }: PropsBloco) {
 
           {paginas?.map((url) => <Pagina key={url} url={url} />)}
 
-          {paginas !== null && <p className="fim-capitulo suave">Fim do capítulo {capitulo.numero}</p>}
+          {/* Fim do capítulo: a caixinha "lido". O toque nela não abre o menu */}
+          {paginas !== null && (
+            <label className="marcar-lido" onClick={(e) => e.stopPropagation()}>
+              <input type="checkbox" checked={capitulo.lido} onChange={(e) => aoMarcar(capitulo, e.target.checked)} />
+              <span>Capítulo {capitulo.numero} lido</span>
+            </label>
+          )}
         </>
       )}
     </section>
@@ -189,10 +199,11 @@ function indiceInicial(obra: ObraLeitor, capitulos: Capitulo[]): number {
   return 0
 }
 
-export function TelaLeitor({ obraId }: { obraId: number }) {
+export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerderAcesso: () => void }) {
   const [obra, setObra] = useState<ObraLeitor | null>(null)
   const [capitulos, setCapitulos] = useState<Capitulo[]>([])
   const [erro, setErro] = useState<string | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
 
   // Capítulos montados na página: do índice "inicio" ao "fim", inclusive
   const [inicio, setInicio] = useState(0)
@@ -287,6 +298,34 @@ export function TelaLeitor({ obraId }: { obraId: number }) {
     [obraId],
   )
 
+  // Marca ou desmarca um capítulo como lido
+  const aoMarcar = useCallback(
+    (capitulo: Capitulo, lido: boolean) => {
+      const aplicar = (valor: boolean) => {
+        const nova = capitulosRef.current.map((c) => (c.id === capitulo.id ? { ...c, lido: valor } : c))
+        capitulosRef.current = nova
+        setCapitulos(nova)
+      }
+
+      // Mostra na hora; se o banco recusar, desfaz
+      aplicar(lido)
+      setAviso(null)
+
+      marcarLido(capitulo.id, lido).catch((e: Error) => {
+        aplicar(!lido)
+
+        // Senha guardada não vale mais (foi trocada): pede de novo
+        if (e instanceof ErroSenhaIncorreta) {
+          esquecerSenha()
+          aoPerderAcesso()
+          return
+        }
+        setAviso(`Não foi possível salvar o capítulo ${capitulo.numero}: ${e.message}`)
+      })
+    },
+    [aoPerderAcesso],
+  )
+
   // Pular: recomeça a página a partir do capítulo escolhido
   function pularPara(indice: number) {
     setInicio(indice)
@@ -363,8 +402,20 @@ export function TelaLeitor({ obraId }: { obraId: number }) {
       )}
 
       {capitulos.slice(inicio, fim + 1).map((capitulo) => (
-        <BlocoCapitulo key={capitulo.id} capitulo={capitulo} aoCarregar={aoCarregar} aoFicarNoCentro={aoFicarNoCentro} />
+        <BlocoCapitulo
+          key={capitulo.id}
+          capitulo={capitulo}
+          aoCarregar={aoCarregar}
+          aoFicarNoCentro={aoFicarNoCentro}
+          aoMarcar={aoMarcar}
+        />
       ))}
+
+      {aviso && (
+        <button type="button" className="aviso-flutuante" onClick={(e) => (e.stopPropagation(), setAviso(null))}>
+          {aviso}
+        </button>
+      )}
 
       <div ref={sentinela} className="fim-leitor">
         {fim >= capitulos.length - 1 && carregados.has(capitulos[fim].id) && (
