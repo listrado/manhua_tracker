@@ -1,0 +1,17 @@
+{
+  "name": "manhua-tracker-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "importar": "node importar-abas.ts",
+    "test": "node --test testes/*.test.ts",
+    "verificar": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "~7.0.2"
+  },
+  "dependencies": {
+    "sharp": "^0.35.5"
+  }
+}
