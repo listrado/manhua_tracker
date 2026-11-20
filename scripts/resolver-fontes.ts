@@ -10,15 +10,23 @@
 //
 // Uso: node resolver-fontes.ts manhuaplus              (obras que vieram do site)
 //      node resolver-fontes.ts manhuaplus sem-fonte    (obras sem fonte em site nenhum)
+//      node resolver-fontes.ts kingofshojo todas       (todas as obras, neste site)
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Adaptador, ResultadoBusca } from '../supabase/functions/_shared/adaptadores/tipos.ts'
+import { ErroDesafioCloudflare, type Adaptador, type ResultadoBusca } from '../supabase/functions/_shared/adaptadores/tipos.ts'
 import { CAMPOS_SITE, montarAdaptador, type Site } from './lib/adaptadores.ts'
 import { ler, PASTA_DADOS, sqlNumero, sqlTexto } from './lib/banco.ts'
 import { decidir, termosDeBusca, type Decisao } from './lib/decidir.ts'
 
 type Obra = { id: number; titulo: string; titulos_alternativos: string[] }
+
+// Nomes usados para montar endereços diretos: o título e até 3 outros nomes
+// escritos em alfabeto latino (nome em coreano ou chinês não vira endereço).
+function nomesParaEndereco(obra: Obra): string[] {
+  const latinos = obra.titulos_alternativos.filter((nome) => /^[\x20-\x7e’‘“”]+$/.test(nome) && /[a-z]/i.test(nome))
+  return [obra.titulo, ...latinos.slice(0, 3)]
+}
 
 // Busca com cache em disco: a chave é o site + o termo.
 async function buscarComCache(adaptador: Adaptador, termo: string): Promise<ResultadoBusca[]> {
@@ -37,7 +45,7 @@ async function buscarComCache(adaptador: Adaptador, termo: string): Promise<Resu
 
 async function principal() {
   const slug = process.argv[2]
-  const modo = process.argv[3] === 'sem-fonte' ? 'sem-fonte' : 'do-site'
+  const modo = process.argv[3] === 'sem-fonte' || process.argv[3] === 'todas' ? process.argv[3] : 'do-site'
   const limite = Number(process.argv[4] ?? Infinity)
   if (!slug) throw new Error('Informe o site. Ex.: node resolver-fontes.ts manhuaplus [sem-fonte] [limite]')
 
@@ -52,13 +60,21 @@ async function principal() {
   // 2. Escolhe as obras a procurar:
   //    padrão ........ as que apareceram neste site e ainda não têm fonte nele;
   //    "sem-fonte" ... as que não têm fonte em site NENHUM (vieram de sites sem
-  //                    adaptador; vale tentar achar a mesma obra aqui).
+  //                    adaptador; vale tentar achar a mesma obra aqui);
+  //    "todas" ....... TODAS as que ainda não têm fonte neste site, mesmo as
+  //                    que nunca foram vistas nele: os sites não andam juntos,
+  //                    e só comparando todos se descobre o mais atualizado.
   const vieramDoSite = new Set(origens.map((o) => o.obra_id))
   const jaTemFonte = new Set(fontes.map((f) => f.obra_id))
   const comAlgumaFonte = new Set((await ler<{ obra_id: number }>('fontes', 'select=obra_id')).map((f) => f.obra_id))
 
   const pendentes = obras
-    .filter((o) => (modo === 'sem-fonte' ? !comAlgumaFonte.has(o.id) : vieramDoSite.has(o.id) && !jaTemFonte.has(o.id)))
+    .filter((o) => {
+      if (jaTemFonte.has(o.id)) return false
+      if (modo === 'todas') return true
+      if (modo === 'sem-fonte') return !comAlgumaFonte.has(o.id)
+      return vieramDoSite.has(o.id)
+    })
     .slice(0, limite)
   console.log(`${slug}: ${pendentes.length} obras para procurar`)
 
@@ -84,22 +100,28 @@ async function principal() {
         if (decisao.tipo === 'vincular') break
       }
 
-      // Último recurso: a busca do site não achou nada, tenta o endereço direto
-      // (o endereço saiu do nome da obra). O site responde 200 até para obra
-      // que não existe, com uma página vazia — então só vale se a página
-      // trouxer capítulos de verdade.
-      if (decisao.tipo === 'nada' && adaptador.urlProvavel) {
-        const url = adaptador.urlProvavel(obra.titulo)
-        try {
-          const dados = await adaptador.lerObra(url)
-          const capitulos = await adaptador.listarCapitulos(url)
+      // Último recurso: a busca do site não achou nada (ou o site não tem busca
+      // acessível), tenta o endereço direto, montado a partir de cada nome
+      // conhecido da obra. Há site que responde 200 até para obra que não
+      // existe, com uma página vazia — então só vale se a página trouxer
+      // capítulos de verdade.
+      if (decisao.tipo === 'nada' && adaptador.urlsProvaveis) {
+        const enderecos = [...new Set(nomesParaEndereco(obra).flatMap((nome) => adaptador.urlsProvaveis!(nome)))]
 
-          if (capitulos.length > 0 && !dados.titulo.includes('<')) {
-            decisao = { tipo: 'vincular', escolhido: { titulo: dados.titulo, url, capaUrl: dados.capaUrl, score: 1 } }
-            termoUsado = url
+        for (const url of enderecos) {
+          try {
+            const dados = await adaptador.lerObra(url)
+            const capitulos = await adaptador.listarCapitulos(url)
+
+            if (capitulos.length > 0 && !dados.titulo.includes('<')) {
+              decisao = { tipo: 'vincular', escolhido: { titulo: dados.titulo, url, capaUrl: dados.capaUrl, score: 1 } }
+              termoUsado = url
+              break
+            }
+          } catch (erro) {
+            // Bloqueio do site interrompe a obra inteira; página inexistente só passa para o próximo endereço
+            if (erro instanceof ErroDesafioCloudflare) throw erro
           }
-        } catch {
-          // Página não existe: continua sem resultado
         }
       }
       decisoes.push({ obra, decisao, termo: termoUsado })

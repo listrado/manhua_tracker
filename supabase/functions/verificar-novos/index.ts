@@ -8,7 +8,7 @@
 //
 // Não usa chave de administrador: lê e grava pelas funções do banco
 // verificacao_lote e verificacao_registrar, que exigem o segredo interno.
-import { criarManhuaplus } from '../_shared/adaptadores/manhuaplus.ts'
+import { criarAdaptador } from '../_shared/adaptadores/indice.ts'
 import { ErroDesafioCloudflare, type Adaptador, type Http } from '../_shared/adaptadores/tipos.ts'
 
 const TAMANHO_DO_LOTE = 12
@@ -52,11 +52,10 @@ function criarHttp(site: string, intervaloMs: number): Http {
 }
 
 function montarAdaptador(item: ItemDoLote): Adaptador {
-  const base = `https://${item.dominios[0]}`
-  const http = criarHttp(item.site_slug, item.intervalo_ms)
-
-  if (item.adaptador === 'manhuaplus') return criarManhuaplus(base, http)
-  throw new Error(`Ainda não existe adaptador "${item.adaptador}"`)
+  return criarAdaptador(
+    { slug: item.site_slug, adaptador: item.adaptador, dominios: item.dominios },
+    criarHttp(item.site_slug, item.intervalo_ms),
+  )
 }
 
 // Chama uma função do schema manhua pela API do banco.

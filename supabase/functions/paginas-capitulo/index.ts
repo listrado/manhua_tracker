@@ -11,7 +11,7 @@
 // Versão sem login: a função lê o banco com a mesma chave pública que o app
 // mandou (a leitura do schema manhua é aberta) e não grava nada. O cache em
 // capitulos_fonte.paginas, que exige escrita, entra junto com o login.
-import { criarManhuaplus } from '../_shared/adaptadores/manhuaplus.ts'
+import { criarAdaptador } from '../_shared/adaptadores/indice.ts'
 import { ErroDesafioCloudflare, type Adaptador, type Http } from '../_shared/adaptadores/tipos.ts'
 
 // Só o app publicado e o ambiente local podem chamar pelo navegador.
@@ -20,7 +20,7 @@ const ORIGENS_PERMITIDAS = ['https://listrado.github.io', 'http://localhost:5173
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
 
-type Site = { slug: string; dominios: string[]; adaptador: string }
+type Site = { slug: string; dominios: string[]; adaptador: string; precisa_proxy: boolean }
 type LinhaFonte = { url: string; fontes: { prioridade: number; ativa: boolean; sites: Site } }
 
 function cabecalhosCors(origem: string | null): Record<string, string> {
@@ -45,9 +45,7 @@ const http: Http = async (url, pedido = {}) => {
 }
 
 function montarAdaptador(site: Site): Adaptador {
-  const base = `https://${site.dominios[0]}`
-  if (site.adaptador === 'manhuaplus') return criarManhuaplus(base, http)
-  throw new Error(`Ainda não existe adaptador "${site.adaptador}"`)
+  return criarAdaptador(site, http)
 }
 
 Deno.serve(async (pedido) => {
@@ -69,16 +67,22 @@ Deno.serve(async (pedido) => {
   if (!chave) return responder({ erro: 'Chave da API ausente' }, 401)
 
   // Busca no banco em quais fontes esse capítulo existe
-  const consulta = `capitulo_id=eq.${capituloId}&select=url,fontes!inner(prioridade,ativa,sites!inner(slug,dominios,adaptador))`
+  const consulta = `capitulo_id=eq.${capituloId}&select=url,fontes!inner(prioridade,ativa,sites!inner(slug,dominios,adaptador,precisa_proxy))`
   const doBanco = await fetch(`${Deno.env.get('SUPABASE_URL')}/rest/v1/capitulos_fonte?${consulta}`, {
     headers: { apikey: chave, 'Accept-Profile': 'manhua' },
   })
   if (!doBanco.ok) return responder({ erro: 'Não foi possível ler o capítulo no banco' }, 502)
 
-  // Fontes ativas, da preferida (menor prioridade) para a reserva
+  // Fontes ativas que têm este capítulo. Primeiro as que o navegador consegue
+  // mostrar direto; as que exigem o proxy de imagem ficam por último, porque
+  // sem o proxy as imagens delas não carregam. Dentro de cada grupo, da
+  // preferida (menor prioridade = mais atualizada) para a reserva.
   const linhas = ((await doBanco.json()) as LinhaFonte[])
     .filter((l) => l.fontes.ativa)
-    .sort((a, b) => a.fontes.prioridade - b.fontes.prioridade)
+    .sort(
+      (a, b) =>
+        Number(a.fontes.sites.precisa_proxy) - Number(b.fontes.sites.precisa_proxy) || a.fontes.prioridade - b.fontes.prioridade,
+    )
   if (linhas.length === 0) return responder({ erro: 'Capítulo sem fonte ativa' }, 404)
 
   // Tenta cada fonte; a primeira que devolver imagens vence
@@ -88,7 +92,11 @@ Deno.serve(async (pedido) => {
       const paginas = await montarAdaptador(linha.fontes.sites).listarPaginas(linha.url)
       if (paginas.length > 0) {
         // A lista de um capítulo publicado não muda: o navegador guarda por um dia
-        return responder({ capitulo_id: Number(capituloId), paginas }, 200, { 'Cache-Control': 'public, max-age=86400' })
+        return responder(
+          { capitulo_id: Number(capituloId), paginas, site: linha.fontes.sites.slug, precisa_proxy: linha.fontes.sites.precisa_proxy },
+          200,
+          { 'Cache-Control': 'public, max-age=86400' },
+        )
       }
       falhas.push(`${linha.fontes.sites.slug}: sem imagens`)
     } catch (erro) {

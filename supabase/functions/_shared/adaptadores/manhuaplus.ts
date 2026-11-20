@@ -129,14 +129,14 @@ export function criarManhuaplus(base: string, http: Http): Adaptador {
 
     // O endereço da obra é o nome em minúsculas, com tudo que não é letra ou
     // número virando hífen: "I'm Going to..." -> /manga/i-m-going-to-...
-    urlProvavel(titulo) {
+    urlsProvaveis(titulo) {
       const slug = titulo
         .toLowerCase()
         .normalize('NFD')
         .replace(/[̀-ͯ]/g, '')
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
-      return `${base}/manga/${slug}`
+      return [`${base}/manga/${slug}`]
     },
 
     async listarPaginas(urlCapitulo) {

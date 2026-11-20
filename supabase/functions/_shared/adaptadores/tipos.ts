@@ -16,9 +16,10 @@ export interface Adaptador {
   listarCapitulos(urlObra: string): Promise<CapituloRemoto[]> // numero, titulo, url
   listarPaginas(urlCapitulo: string): Promise<string[]> // URLs das imagens, em ordem
 
-  // Opcional: endereço em que a obra provavelmente está, montado só pelo nome.
-  // Serve de último recurso quando a busca do site não acha nada.
-  urlProvavel?(titulo: string): string
+  // Opcional: endereços em que a obra provavelmente está, montados só pelo
+  // nome (mais de um quando o site pode escrever o nome de jeitos diferentes).
+  // Serve quando a busca do site não acha nada ou não existe.
+  urlsProvaveis?(titulo: string): string[]
 }
 
 // Quem chama fornece o acesso à rede. É aqui que ficam o intervalo entre
