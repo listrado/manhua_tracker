@@ -130,11 +130,14 @@ export function criarManhuatop(slug: string, base: string, http: Http): Adaptado
     },
 
     // A lista vem de 50 em 50, do capítulo mais novo para o mais antigo
-    async listarCapitulos(urlObra) {
+    async listarCapitulos(urlObra, opcoes) {
       const raiz = urlObra.split('?')[0]
       const porNumero = new Map<number, CapituloRemoto>()
 
-      for (let numeroDaPagina = 1; numeroDaPagina <= MAXIMO_DE_PAGINAS; numeroDaPagina++) {
+      // Só os recentes: a primeira página (os 50 capítulos mais novos) basta
+      const ultimaPagina = opcoes?.soRecentes ? 1 : MAXIMO_DE_PAGINAS
+
+      for (let numeroDaPagina = 1; numeroDaPagina <= ultimaPagina; numeroDaPagina++) {
         const html = await pagina(`${raiz}?tab=chapters&chapter_page=${numeroDaPagina}`)
         const { capitulos, temMais } = extrairCapitulosManhuatop(html, base)
 

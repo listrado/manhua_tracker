@@ -68,12 +68,16 @@ Pedidos do dono que ficaram anotados, ainda sem implementação:
   o adaptador ler esse dado e o banco guardar.
 - **Recomendações**: sugerir obras ainda não lidas, parecidas com as que já são lidas
   (os sites têm seção de recomendados e os gêneros ajudam a medir semelhança).
-- **Verificação automática de capítulos novos** (função `verificar-novos` + agendamento).
-  Hoje os capítulos só são atualizados rodando `scripts/sincronizar-obras.ts` à mão; o
-  destaque "hot" depende disso para aparecer.
-- **Leitura offline** (proxy de imagem no Cloudflare + download para o aparelho).
-- **Links das obras dos outros sites** (Manganato, Manganelo, MANHUAUS, Kingofshojo…):
-  cada site precisa do seu adaptador.
+- **Leitura offline**: o proxy de imagem já existe (`worker/`); falta o download
+  para o aparelho (IndexedDB), o leitor ler de lá e o app instalável (PWA).
+- **Tela "Confirmar"**: os resultados de busca em dúvida ficam na tabela `candidatos`,
+  ainda sem tela para aceitar ou recusar.
+- **Adaptadores que faltam**: MANHWATOP, Vortex Scans, Asura, Kayn Scans, Roliascan,
+  ManhwaGalaxy, MangaFox e MangaDex.
+
+Sites que não dá para usar: MANHUAFAST, MANHUAUS, Manhwa Clan e ToonGod respondem com
+o desafio do Cloudflare (não é burlado); Bato.to fechou; Thunderscans e Webtoonscan
+saíram do ar.
 
 ## Segurança
 

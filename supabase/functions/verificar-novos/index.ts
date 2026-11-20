@@ -97,7 +97,8 @@ Deno.serve(async (pedido) => {
       if (Date.now() - inicio > TEMPO_MAXIMO_MS) break
 
       try {
-        const capitulos = await montarAdaptador(item).listarCapitulos(item.url_obra)
+        // Para saber se saiu capítulo novo bastam os mais recentes
+        const capitulos = await montarAdaptador(item).listarCapitulos(item.url_obra, { soRecentes: true })
 
         await rpc('verificacao_registrar', {
           p_segredo: segredo,

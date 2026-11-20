@@ -80,6 +80,7 @@ async function principal() {
   const blocos: string[] = []
   const erros: string[] = []
   const suspeitas: string[] = []
+  const diferencas: string[] = []
   let totalCapitulos = 0
   let totalCapas = 0
 
@@ -94,18 +95,24 @@ async function principal() {
       const capitulos = await adaptador.listarCapitulos(fonte.url_obra)
       const sql: string[] = []
 
-      // Trava contra obra errada de mesmo nome: se a obra já tem capítulos de
-      // outra fonte e esta traz uma quantidade muito diferente, é quase certo
-      // que é outra história. A fonte é desligada e nada dela entra.
+      // Fonte que não traz nenhum capítulo não serve: é desligada.
+      //
+      // Aqui já existiu uma trava que desligava a fonte quando a quantidade de
+      // capítulos era muito diferente da que a obra tinha. Foi removida: os
+      // sites andam MUITO desencontrados (101 capítulos em dois sites, 17 num
+      // terceiro, para a mesma obra), e a trava desligava justamente a fonte
+      // atualizada. A diferença só é anotada, para conferência.
       const ultimoDaFonte = capitulos.at(-1)?.numero ?? 0
       const totalConhecido = obra.total_capitulos ?? 0
-      const muitoMenor = ultimoDaFonte < totalConhecido * 0.4
-      const muitoMaior = ultimoDaFonte > totalConhecido * 2.5 + 30
-      if (totalConhecido > 0 && (capitulos.length === 0 || muitoMenor || muitoMaior)) {
-        const motivo = `suspeita de obra diferente: esta fonte vai até o capítulo ${ultimoDaFonte}, a obra tem ${totalConhecido}`
-        suspeitas.push(`${obra.titulo} — ${fonte.url_obra} (${ultimoDaFonte} × ${totalConhecido})`)
-        blocos.push(`update manhua.fontes set ativa = false, erro_ultimo = ${sqlTexto(motivo)}, verificado_em = now() where id = ${fonte.id};`)
+      if (capitulos.length === 0) {
+        blocos.push(
+          `update manhua.fontes set ativa = false, erro_ultimo = 'a página da obra não traz nenhum capítulo', verificado_em = now() where id = ${fonte.id};`,
+        )
+        suspeitas.push(`${obra.titulo} — ${fonte.url_obra} (sem capítulos)`)
         continue
+      }
+      if (totalConhecido > 0 && (ultimoDaFonte < totalConhecido * 0.4 || ultimoDaFonte > totalConhecido * 2.5 + 30)) {
+        diferencas.push(`${obra.titulo}: ${site.slug} vai até ${ultimoDaFonte}, a obra tinha ${totalConhecido}`)
       }
 
       // Capa: só baixa se a obra ainda não tem
@@ -130,9 +137,18 @@ async function principal() {
         `update manhua.obras set titulos_alternativos = ${sqlLista(juntarNomes(obra, dados.titulo, dados.titulosAlternativos))}, capa_path = coalesce(capa_path, ${sqlTexto(capaPath)}), sem_fonte = false where id = ${obra.id};`,
       )
 
-      // Total de capítulos, selo "novo" e destaque "hot": a função do banco
-      // compara com o total anterior e decide se houve lançamento
-      sql.push(`select manhua.registrar_lancamento(${obra.id}, ${sqlNumero(ultimo)});`)
+      if (modo === 'novas') {
+        // Fonte recém-vinculada: os capítulos a mais que ela traz não são
+        // lançamento, é só o banco alcançando um site mais atualizado. Atualiza
+        // o total sem acender o selo "novo" nem o destaque "hot".
+        sql.push(
+          `update manhua.obras set total_capitulos = greatest(coalesce(total_capitulos, 0), ${sqlNumero(ultimo ?? 0)}) where id = ${obra.id};`,
+        )
+      } else {
+        // Fonte já conhecida: a função do banco compara com o total anterior e
+        // decide se houve lançamento (selo "novo" e destaque "hot")
+        sql.push(`select manhua.registrar_lancamento(${obra.id}, ${sqlNumero(ultimo)});`)
+      }
 
       if (capitulos.length > 0) {
         const valores = capitulos.map((c) => `(${c.numero}, ${sqlTexto(c.titulo)}, ${sqlTexto(c.url)})`).join(', ')
@@ -183,8 +199,11 @@ async function principal() {
   console.log(`Capítulos: ${totalCapitulos} | capas novas: ${totalCapas} | erros: ${erros.length} | arquivos .sql: ${numero}`)
   for (const erro of erros) console.log(`  ERRO ${erro}`)
 
-  console.log(`Fontes desligadas por suspeita de obra diferente: ${suspeitas.length}`)
-  for (const suspeita of suspeitas) console.log(`  SUSPEITA ${suspeita}`)
+  console.log(`Fontes desligadas por não trazerem capítulos: ${suspeitas.length}`)
+  for (const suspeita of suspeitas) console.log(`  SEM-CAPITULOS ${suspeita}`)
+
+  console.log(`Obras com quantidade de capítulos muito diferente entre sites: ${diferencas.length}`)
+  for (const diferenca of diferencas) console.log(`  DIFERENCA ${diferenca}`)
 }
 
 await principal()

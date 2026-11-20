@@ -13,7 +13,9 @@ export interface Adaptador {
   slug: string
   buscar(termo: string): Promise<ResultadoBusca[]> // nome -> candidatos
   lerObra(urlObra: string): Promise<DadosObra> // título, capa, títulos alternativos
-  listarCapitulos(urlObra: string): Promise<CapituloRemoto[]> // numero, titulo, url
+  // numero, titulo, url. Com soRecentes, o adaptador pode devolver só os
+  // capítulos mais novos (basta para saber se saiu algo); sem ela, todos.
+  listarCapitulos(urlObra: string, opcoes?: { soRecentes?: boolean }): Promise<CapituloRemoto[]>
   listarPaginas(urlCapitulo: string): Promise<string[]> // URLs das imagens, em ordem
 
   // Opcional: endereços em que a obra provavelmente está, montados só pelo
