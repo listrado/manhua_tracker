@@ -34,7 +34,9 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
-      - run: npm ci
+      # "npm install" e não "npm ci": o lockfile é gerado no Windows e não lista
+      # alguns pacotes opcionais que só existem no Linux; o "npm ci" recusa por isso.
+      - run: npm install --no-audit --no-fund
 
       # Os três valores são públicos por natureza (vão dentro do JS do site),
       # por isso ficam em "Variables" do repositório, não em "Secrets".
