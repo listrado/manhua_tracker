@@ -84,14 +84,20 @@ async function principal() {
         if (decisao.tipo === 'vincular') break
       }
 
-      // Último recurso: a busca do site não achou nada, tenta o endereço direto.
-      // Se a página existir (não der 404), é a obra: o endereço saiu do nome dela.
+      // Último recurso: a busca do site não achou nada, tenta o endereço direto
+      // (o endereço saiu do nome da obra). O site responde 200 até para obra
+      // que não existe, com uma página vazia — então só vale se a página
+      // trouxer capítulos de verdade.
       if (decisao.tipo === 'nada' && adaptador.urlProvavel) {
         const url = adaptador.urlProvavel(obra.titulo)
         try {
           const dados = await adaptador.lerObra(url)
-          decisao = { tipo: 'vincular', escolhido: { titulo: dados.titulo, url, capaUrl: dados.capaUrl, score: 1 } }
-          termoUsado = url
+          const capitulos = await adaptador.listarCapitulos(url)
+
+          if (capitulos.length > 0 && !dados.titulo.includes('<')) {
+            decisao = { tipo: 'vincular', escolhido: { titulo: dados.titulo, url, capaUrl: dados.capaUrl, score: 1 } }
+            termoUsado = url
+          }
         } catch {
           // Página não existe: continua sem resultado
         }

@@ -51,14 +51,19 @@ function juntarNomes(obra: Obra, tituloNoSite: string, alternativosDoSite: strin
 
 async function principal() {
   const slug = process.argv[2]
-  const limite = Number(process.argv[3] ?? Infinity)
-  if (!slug) throw new Error('Informe o site. Ex.: node sincronizar-obras.ts manhuaplus')
+  const modo = process.argv[3] === 'novas' ? 'novas' : 'todas'
+  const limite = Number(process.argv[4] ?? Infinity)
+  if (!slug) throw new Error('Informe o site. Ex.: node sincronizar-obras.ts manhuaplus [novas] [limite]')
 
   // 1. Lê o site, as fontes dele e as obras
   const [site] = await ler<Site>('sites', `slug=eq.${slug}&select=${CAMPOS_SITE}`)
   if (!site) throw new Error(`Site "${slug}" não está cadastrado em manhua.sites`)
 
-  const fontes = (await ler<Fonte>('fontes', `site_id=eq.${site.id}&ativa=is.true&select=id,obra_id,url_obra&order=id`)).slice(0, limite)
+  // "novas": só as fontes que nunca foram lidas (acabaram de ser vinculadas)
+  const soNovas = modo === 'novas' ? '&verificado_em=is.null' : ''
+  const fontes = (
+    await ler<Fonte>('fontes', `site_id=eq.${site.id}&ativa=is.true${soNovas}&select=id,obra_id,url_obra&order=id`)
+  ).slice(0, limite)
   const obras = new Map((await ler<Obra>('obras', 'select=id,titulo,titulos_alternativos,capa_path')).map((o) => [o.id, o]))
   console.log(`${slug}: ${fontes.length} obras para sincronizar`)
 
