@@ -413,7 +413,37 @@ button.secundario {
   background: var(--fundo);
 }
 
-/* Menu flutuante: aparece com um toque e some sozinho */
+/* Botão do menu (três risquinhos) no canto de cima à esquerda. Quase
+   transparente: dá para achar olhando, mas não chama atenção na leitura */
+.botao-menu {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top));
+  left: 8px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: rgb(15 17 21 / 0.25);
+  border: none;
+  border-radius: 10px;
+  opacity: 0.35;
+}
+
+.botao-menu span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: #fff;
+  border-radius: 2px;
+}
+
+/* Menu flutuante: abre pelo botão do canto e some sozinho */
 .menu-leitor {
   position: fixed;
   top: 0;

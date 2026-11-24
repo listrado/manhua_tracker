@@ -194,3 +194,23 @@ export function salvarModoAutomatico(automatico: boolean) {
     // Armazenamento indisponível: vale só até fechar a página
   }
 }
+
+// Modo "toque para rolar", guardado no aparelho: ligado, um toque na leitura
+// desce quase uma tela inteira, em vez de precisar arrastar.
+const CHAVE_TOQUE_ROLA = 'manhua-toque-rola'
+
+export function lerToqueRola(): boolean {
+  try {
+    return localStorage.getItem(CHAVE_TOQUE_ROLA) === 'sim'
+  } catch {
+    return false
+  }
+}
+
+export function salvarToqueRola(ligado: boolean) {
+  try {
+    localStorage.setItem(CHAVE_TOQUE_ROLA, ligado ? 'sim' : 'nao')
+  } catch {
+    // Armazenamento indisponível: vale só até fechar a página
+  }
+}

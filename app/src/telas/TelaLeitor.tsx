@@ -6,10 +6,12 @@ import {
   ErroSenhaIncorreta,
   lerModoAutomatico,
   lerPosicao,
+  lerToqueRola,
   marcarLido,
   numerosOffline,
   salvarModoAutomatico,
   salvarPosicao,
+  salvarToqueRola,
   type Capitulo,
   type ObraLeitor,
   type PaginaCapitulo,
@@ -43,6 +45,9 @@ const MENU_MS = 6000
 const RESTAURAR_MS = 20000
 // De quanto em quanto tempo a posição de leitura é gravada enquanto se rola.
 const SALVAR_POSICAO_MS = 400
+// Modo "toque para rolar": quanto da altura da tela cada toque desce. Menos que
+// uma tela inteira, para sobrar no topo um pedaço do que já estava à vista.
+const FRACAO_DO_PULO = 0.85
 
 // proporcao: altura/largura da imagem, conhecida de uma leitura anterior
 type PropsPagina = { pagina: PaginaCapitulo; proporcao: number | null; aoCarregar: () => void }
@@ -389,6 +394,8 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
 
   // Modo de marcar como lido: ao tocar (padrão) ou automático. Fica guardado no aparelho
   const [automatico, setAutomatico] = useState(() => lerModoAutomatico())
+  // Modo "toque para rolar": um toque na leitura desce quase uma tela
+  const [toqueRola, setToqueRola] = useState(() => lerToqueRola())
 
   const [numeroAtual, setNumeroAtual] = useState<number | null>(null)
   const [menuAberto, setMenuAberto] = useState(false)
@@ -560,7 +567,18 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
     if (!menuAberto) return
     const relogio = setTimeout(() => setMenuAberto(false), MENU_MS)
     return () => clearTimeout(relogio)
-  }, [menuAberto, numeroAtual, confirmarApagar, capitulosBaixados, situacaoDoDownload, automatico])
+  }, [menuAberto, numeroAtual, confirmarApagar, capitulosBaixados, situacaoDoDownload, automatico, toqueRola])
+
+  // Toque na leitura (fora do menu e dos botões): com o menu aberto, fecha o
+  // menu; no modo "toque para rolar", desce quase uma tela; senão, nada —
+  // o menu só abre pelo botão do canto.
+  function aoTocarNaLeitura() {
+    if (menuAberto) {
+      setMenuAberto(false)
+      return
+    }
+    if (toqueRola) window.scrollBy({ top: Math.round(window.innerHeight * FRACAO_DO_PULO), behavior: 'smooth' })
+  }
 
   const aoCarregar = useCallback(
     (capituloId: number) => {
@@ -666,8 +684,24 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
   const baixando = downloadDaObra?.situacao === 'baixando'
 
   return (
-    // Um toque em qualquer ponto da leitura mostra ou esconde o menu
-    <main className="leitor" onClick={() => setMenuAberto((aberto) => !aberto)}>
+    <main className="leitor" onClick={aoTocarNaLeitura}>
+      {/* Botão do menu: fica no canto, quase transparente, para não atrapalhar a leitura */}
+      {!menuAberto && (
+        <button
+          type="button"
+          className="botao-menu"
+          aria-label="Abrir menu"
+          onClick={(e) => {
+            e.stopPropagation()
+            setMenuAberto(true)
+          }}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+      )}
+
       {menuAberto && (
         <div className="menu-leitor" onClick={(e) => e.stopPropagation()}>
           <a className="menu-voltar" href="#/">
@@ -703,6 +737,19 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
             }}
           >
             Marcar lido: {automatico ? 'automático, ao passar do fim do capítulo' : 'só ao tocar no botão do fim do capítulo'}
+          </button>
+
+          {/* Toque para rolar: cada toque na leitura desce quase uma tela */}
+          <button
+            type="button"
+            className="secundario menu-linha"
+            aria-pressed={toqueRola}
+            onClick={() => {
+              salvarToqueRola(!toqueRola)
+              setToqueRola(!toqueRola)
+            }}
+          >
+            Toque para rolar: {toqueRola ? 'ligado, cada toque desce quase uma tela' : 'desligado'}
           </button>
 
           {/* Leitura offline: baixar a partir do capítulo em leitura, parar, liberar */}
