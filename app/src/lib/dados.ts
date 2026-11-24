@@ -146,7 +146,10 @@ export async function marcarLido(capituloId: number, lido: boolean): Promise<voi
 // Posição de leitura guardada no aparelho: o capítulo, a imagem dentro dele e
 // quanto dessa imagem já tinha passado pelo topo da tela (0 a 1). É o que
 // permite voltar ao ponto exato depois de recarregar a página.
-export type Posicao = { numero: number; indice: number; fracao: number }
+// "proporcoes" guarda altura/largura das imagens do capítulo até a que estava
+// na tela (null = ainda não tinha carregado). Ao reabrir, o espaço de cada
+// imagem já nasce do tamanho certo e a página não se desloca enquanto carregam.
+export type Posicao = { numero: number; indice: number; fracao: number; proporcoes?: (number | null)[] }
 
 const chavePosicao = (obraId: number) => `manhua-posicao-${obraId}`
 

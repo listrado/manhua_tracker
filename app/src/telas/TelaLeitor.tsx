@@ -44,9 +44,10 @@ const RESTAURAR_MS = 20000
 // De quanto em quanto tempo a posição de leitura é gravada enquanto se rola.
 const SALVAR_POSICAO_MS = 400
 
-type PropsPagina = { pagina: PaginaCapitulo; aoCarregar: () => void }
+// proporcao: altura/largura da imagem, conhecida de uma leitura anterior
+type PropsPagina = { pagina: PaginaCapitulo; proporcao: number | null; aoCarregar: () => void }
 
-function Pagina({ pagina, aoCarregar }: PropsPagina) {
+function Pagina({ pagina, proporcao, aoCarregar }: PropsPagina) {
   const [estado, setEstado] = useState<'carregando' | 'pronta' | 'erro'>('carregando')
   const [tentativa, setTentativa] = useState(0)
   // Falhou pelo caminho principal: passa a usar a reserva (o proxy de imagem)
@@ -99,8 +100,12 @@ function Pagina({ pagina, aoCarregar }: PropsPagina) {
     )
   }
 
+  // Enquanto a imagem não chega, o espaço reservado tem o tamanho exato dela
+  // (quando a proporção é conhecida); senão vale a altura padrão do CSS
+  const reserva = proporcao !== null && estado !== 'pronta' ? { aspectRatio: `1 / ${proporcao}`, minHeight: 0 } : undefined
+
   // Ainda lendo do aparelho: reserva o espaço
-  if (url === null) return <div className="pagina-item pagina pagina-carregando" />
+  if (url === null) return <div className="pagina-item pagina pagina-carregando" style={reserva} />
 
   // Sem referer: é assim que o próprio site carrega as imagens.
   // loading="eager": a imagem baixa assim que o capítulo é montado, mesmo
@@ -109,6 +114,7 @@ function Pagina({ pagina, aoCarregar }: PropsPagina) {
     <img
       key={`${tentativa}-${usarReserva}`}
       className={estado === 'pronta' ? 'pagina-item pagina' : 'pagina-item pagina pagina-carregando'}
+      style={reserva}
       src={url}
       alt=""
       loading="eager"
@@ -131,6 +137,8 @@ type PropsBloco = {
   obraId: number
   capitulo: Capitulo
   offline: boolean
+  // Proporções das imagens guardadas junto com o ponto de leitura (ou null)
+  proporcoes: (number | null)[] | null
   aoCarregar: (capituloId: number) => void
   aoFicarNoCentro: (numero: number) => void
   aoMarcar: (capitulo: Capitulo, lido: boolean) => void
@@ -140,7 +148,7 @@ type PropsBloco = {
   automatico: boolean
 }
 
-function BlocoCapitulo({ obraId, capitulo, offline, aoCarregar, aoFicarNoCentro, aoMarcar, aoMudarAltura, automatico }: PropsBloco) {
+function BlocoCapitulo({ obraId, capitulo, offline, proporcoes, aoCarregar, aoFicarNoCentro, aoMarcar, aoMudarAltura, automatico }: PropsBloco) {
   const elemento = useRef<HTMLElement>(null)
   const fimDoCapitulo = useRef<HTMLButtonElement>(null)
   const jaMarcouSozinho = useRef(false)
@@ -274,6 +282,7 @@ function BlocoCapitulo({ obraId, capitulo, offline, aoCarregar, aoFicarNoCentro,
             <Pagina
               key={pagina.origem === 'rede' ? pagina.url : `aparelho-${pagina.indice}`}
               pagina={pagina}
+              proporcao={proporcoes?.[indice] ?? null}
               aoCarregar={() => aoMudarAltura(numero, indice)}
             />
           ))}
@@ -316,6 +325,15 @@ function indiceInicial(obra: ObraLeitor, capitulos: Capitulo[], salva: Posicao |
   return 0
 }
 
+// Altura/largura das imagens do capítulo até a de índice dado (null = a imagem
+// ainda não carregou). Vai junto com o ponto de leitura.
+function proporcoesAte(itens: NodeListOf<HTMLElement>, indice: number): (number | null)[] {
+  return [...itens].slice(0, indice + 1).map((item) => {
+    if (!(item instanceof HTMLImageElement) || item.naturalWidth === 0) return null
+    return Math.round((item.naturalHeight / item.naturalWidth) * 10000) / 10000
+  })
+}
+
 // Mede o ponto de leitura: qual capítulo está no topo da tela, qual imagem
 // dele e quanto dessa imagem já passou.
 function medirPosicao(): Posicao | null {
@@ -332,11 +350,12 @@ function medirPosicao(): Posicao | null {
       if (caixa.bottom <= 1) continue
 
       const fracao = caixa.height > 0 ? Math.min(1, Math.max(0, -caixa.top / caixa.height)) : 0
-      return { numero: Number(secao.dataset.numero), indice, fracao }
+      return { numero: Number(secao.dataset.numero), indice, fracao, proporcoes: proporcoesAte(itens, indice) }
     }
 
     // Passou de todas as imagens: está no botão do fim do capítulo
-    return { numero: Number(secao.dataset.numero), indice: itens.length - 1, fracao: 1 }
+    const ultima = itens.length - 1
+    return { numero: Number(secao.dataset.numero), indice: ultima, fracao: 1, proporcoes: proporcoesAte(itens, ultima) }
   }
 
   return null
@@ -362,6 +381,11 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
 
   // Ponto salvo para o qual o leitor ainda está voltando depois de abrir
   const restaurando = useRef<Posicao | null>(null)
+  // A volta ao ponto salvo já foi aplicada pelo menos uma vez? Antes disso, um
+  // toque na tela não cancela a volta (o capítulo ainda nem apareceu).
+  const voltaAplicada = useRef(false)
+  // Ponto salvo com que o leitor abriu: dá as proporções das imagens do capítulo
+  const [pontoInicial, setPontoInicial] = useState<Posicao | null>(null)
 
   // Modo de marcar como lido: ao tocar (padrão) ou automático. Fica guardado no aparelho
   const [automatico, setAutomatico] = useState(() => lerModoAutomatico())
@@ -408,6 +432,7 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
 
         capitulosRef.current = lista
         indiceLendo.current = comeco
+        setPontoInicial(voltarPara)
         setObra(dadosObra)
         setCapitulos(lista)
         setSemRede(daCopia)
@@ -436,24 +461,32 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
 
     const caixa = item.getBoundingClientRect()
     window.scrollTo(0, window.scrollY + caixa.top + caixa.height * alvo.fracao)
+    voltaAplicada.current = true
   }, [])
 
   // O leitor para de insistir no ponto salvo assim que o usuário mexe na
-  // página, ou depois de um tempo
+  // página (mas só depois de já ter voltado ao ponto), ou depois de um tempo
   useEffect(() => {
     const soltar = () => {
       restaurando.current = null
     }
+    const soltarSeJaVoltou = () => {
+      if (voltaAplicada.current) soltar()
+    }
     const relogio = setTimeout(soltar, RESTAURAR_MS)
 
-    window.addEventListener('touchstart', soltar, { passive: true })
-    window.addEventListener('wheel', soltar, { passive: true })
-    window.addEventListener('keydown', soltar)
+    // O próprio leitor cuida da posição; o navegador não deve tentar também
+    history.scrollRestoration = 'manual'
+
+    window.addEventListener('touchstart', soltarSeJaVoltou, { passive: true })
+    window.addEventListener('wheel', soltarSeJaVoltou, { passive: true })
+    window.addEventListener('keydown', soltarSeJaVoltou)
     return () => {
       clearTimeout(relogio)
-      window.removeEventListener('touchstart', soltar)
-      window.removeEventListener('wheel', soltar)
-      window.removeEventListener('keydown', soltar)
+      history.scrollRestoration = 'auto'
+      window.removeEventListener('touchstart', soltarSeJaVoltou)
+      window.removeEventListener('wheel', soltarSeJaVoltou)
+      window.removeEventListener('keydown', soltarSeJaVoltou)
     }
   }, [obraId])
 
@@ -720,6 +753,7 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
           obraId={obraId}
           capitulo={capitulo}
           offline={offline.has(capitulo.numero)}
+          proporcoes={pontoInicial?.numero === capitulo.numero ? (pontoInicial.proporcoes ?? null) : null}
           aoCarregar={aoCarregar}
           aoFicarNoCentro={aoFicarNoCentro}
           aoMarcar={aoMarcar}
