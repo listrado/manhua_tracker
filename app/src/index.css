@@ -358,13 +358,35 @@ button.secundario {
   background: #1f6b3d;
 }
 
-/* Segunda linha do menu do leitor */
-.menu-modo {
+/* Linhas inteiras do menu do leitor (modo de marcar lido, download, liberar espaço) */
+.menu-linha {
   flex: 1 0 100%;
   min-height: 44px;
+  margin: 0;
   font-size: 0.875rem;
   font-weight: 500;
   text-align: left;
+}
+
+/* Capítulo que está guardado no aparelho */
+.selo-offline {
+  background: #1f6b3d;
+}
+
+/* Progresso do download, visível com o menu fechado */
+.chip-download {
+  position: fixed;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  z-index: 2;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--texto);
+  background: rgb(15 17 21 / 0.9);
+  border: 1px solid var(--borda);
+  border-radius: 999px;
+  pointer-events: none;
 }
 
 /* Erro ao salvar: aparece embaixo e some com um toque */

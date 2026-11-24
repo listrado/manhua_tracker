@@ -13,6 +13,7 @@ import {
   type Criterio,
   type Ordenacao,
 } from '../lib/ordenacao'
+import { formatarBytes, resumoPorObra, type ResumoOffline } from '../lib/offline'
 import { supabase } from '../lib/supabase'
 
 // Biblioteca: lista as obras em duas abas, com busca, ordenação e capa; tocar
@@ -63,7 +64,26 @@ function linkDaObra(obra: Obra): string | null {
   return ativas[0]?.url_obra ?? null
 }
 
-function ItemObra({ obra }: { obra: Obra }) {
+// Última lista de obras, guardada no aparelho para a biblioteca abrir sem internet.
+const CHAVE_BIBLIOTECA = 'manhua-biblioteca'
+
+function guardarBiblioteca(obras: Obra[]) {
+  try {
+    localStorage.setItem(CHAVE_BIBLIOTECA, JSON.stringify(obras))
+  } catch {
+    // Sem espaço ou armazenamento indisponível: a biblioteca só abre com internet
+  }
+}
+
+function lerBibliotecaGuardada(): Obra[] | null {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_BIBLIOTECA) ?? 'null') as Obra[] | null
+  } catch {
+    return null
+  }
+}
+
+function ItemObra({ obra, noAparelho }: { obra: Obra; noAparelho: ResumoOffline | null }) {
   const link = linkDaObra(obra)
   const fracao = fracaoLida(obra)
   const quente = estaQuente(obra)
@@ -93,6 +113,11 @@ function ItemObra({ obra }: { obra: Obra }) {
           {obra.tem_novo && !quente && <span className="selo">novo</span>}
         </span>
         {!link && <span className="suave pequeno">link ainda não encontrado</span>}
+        {noAparelho && noAparelho.bytes > 0 && (
+          <span className="suave pequeno">
+            ⬇ offline: {noAparelho.capitulos} cap., {formatarBytes(noAparelho.bytes)}
+          </span>
+        )}
       </div>
     </>
   )
@@ -129,6 +154,8 @@ export function TelaBiblioteca() {
   const [busca, setBusca] = useState('')
   const [ordenacao, setOrdenacao] = useState<Ordenacao>(() => lerOrdenacao())
   const [esconderEmDia, setEsconderEmDia] = useState(() => lerEsconderEmDia())
+  const [noAparelho, setNoAparelho] = useState<Map<number, ResumoOffline>>(() => new Map())
+  const [semRede, setSemRede] = useState(false)
 
   // Troca a ordenação e guarda a escolha no aparelho
   function mudarOrdenacao(nova: Ordenacao) {
@@ -140,6 +167,13 @@ export function TelaBiblioteca() {
     if (!supabase) return
     let cancelado = false
 
+    // O que está baixado no aparelho, por obra
+    resumoPorObra()
+      .then((resumo) => {
+        if (!cancelado) setNoAparelho(resumo)
+      })
+      .catch(() => {})
+
     // Carrega todas as obras de uma vez (são algumas centenas), já com as fontes
     supabase
       .from('obras')
@@ -149,8 +183,22 @@ export function TelaBiblioteca() {
       .order('titulo')
       .then(({ data, error }) => {
         if (cancelado) return
-        if (error) setErro(error.message)
-        else setObras(data as Obra[])
+
+        if (!error) {
+          // Guarda a lista no aparelho, para a biblioteca abrir sem internet
+          setObras(data as Obra[])
+          guardarBiblioteca(data as Obra[])
+          return
+        }
+
+        // Sem internet: mostra a última lista guardada
+        const guardada = lerBibliotecaGuardada()
+        if (guardada) {
+          setObras(guardada)
+          setSemRede(true)
+        } else {
+          setErro(error.message)
+        }
       })
 
     return () => {
@@ -244,13 +292,14 @@ export function TelaBiblioteca() {
         </div>
       </header>
 
+      {semRede && <p className="suave aviso">Sem internet: mostrando a última lista guardada. Só abrem as obras baixadas.</p>}
       {erro && <p className="erro aviso">Não foi possível carregar: {erro}</p>}
       {!erro && obras === null && <p className="suave aviso">Carregando…</p>}
       {obras !== null && visiveis.length === 0 && <p className="suave aviso">Nenhuma obra aqui.</p>}
 
       <ul className="lista">
         {visiveis.map((obra) => (
-          <ItemObra key={obra.id} obra={obra} />
+          <ItemObra key={obra.id} obra={obra} noAparelho={noAparelho.get(obra.id) ?? null} />
         ))}
       </ul>
     </main>

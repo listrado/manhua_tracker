@@ -1,24 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { assinarDownload, baixarObra, estadoDoDownload, pararDownload } from '../lib/baixar'
 import {
-  carregarCapitulos,
-  carregarObra,
+  carregarObraECapitulos,
   carregarPaginas,
   ErroSenhaIncorreta,
   lerModoAutomatico,
   lerPosicao,
   marcarLido,
+  numerosOffline,
   salvarModoAutomatico,
   salvarPosicao,
   type Capitulo,
   type ObraLeitor,
   type PaginaCapitulo,
+  type Posicao,
 } from '../lib/dados'
+import { apagarObra, formatarBytes, lerPagina, resumoPorObra, type ResumoOffline } from '../lib/offline'
 import { esquecerSenha } from '../lib/senha'
 
-// Leitor contínuo, versão online: os capítulos aparecem um embaixo do outro e o
-// próximo é carregado sozinho quando o fim se aproxima. As imagens vêm direto
-// do site de origem. No fim de cada capítulo há a caixinha "lido". O download
-// para ler offline entra depois (depende do proxy de imagem).
+// Leitor contínuo: os capítulos aparecem um embaixo do outro e os próximos são
+// carregados sozinhos. As imagens vêm do site de origem ou, para capítulo
+// baixado, do próprio aparelho (leitura offline). No fim de cada capítulo há o
+// botão de marcar como lido.
 
 // Quantos capítulos À FRENTE do que está sendo lido ficam carregados (lista de
 // imagens e as próprias imagens). Assim, se a internet cair, dá para seguir
@@ -33,21 +36,58 @@ const CAPITULOS_ADIANTE = 5
 const MARGEM_PERTO = '3000px 0px'
 // Quanto antes do fim da página o próximo capítulo começa a carregar.
 const MARGEM_PROXIMO = '2000px 0px'
-// Tempo que o menu fica visível depois do toque.
-const MENU_MS = 4000
+// Tempo que o menu fica visível depois do último toque.
+const MENU_MS = 6000
+// Por quanto tempo o leitor insiste em voltar ao ponto salvo depois de abrir
+// (as imagens de cima vão chegando e empurrando a página).
+const RESTAURAR_MS = 20000
+// De quanto em quanto tempo a posição de leitura é gravada enquanto se rola.
+const SALVAR_POSICAO_MS = 400
 
-function Pagina({ pagina }: { pagina: PaginaCapitulo }) {
+type PropsPagina = { pagina: PaginaCapitulo; aoCarregar: () => void }
+
+function Pagina({ pagina, aoCarregar }: PropsPagina) {
   const [estado, setEstado] = useState<'carregando' | 'pronta' | 'erro'>('carregando')
   const [tentativa, setTentativa] = useState(0)
   // Falhou pelo caminho principal: passa a usar a reserva (o proxy de imagem)
   const [usarReserva, setUsarReserva] = useState(false)
-  const url = usarReserva && pagina.reserva ? pagina.reserva : pagina.url
+  // Imagem guardada no aparelho: endereço temporário criado a partir dos bytes
+  const [enderecoLocal, setEnderecoLocal] = useState<string | null>(null)
+
+  // Página offline: lê os bytes do aparelho e cria um endereço temporário.
+  // O endereço é liberado quando a página sai da tela, para não vazar memória.
+  useEffect(() => {
+    if (pagina.origem !== 'aparelho') return
+    let cancelado = false
+    let criado: string | null = null
+
+    lerPagina(pagina.obraId, pagina.numero, pagina.indice)
+      .then((guardada) => {
+        if (cancelado) return
+        if (!guardada) {
+          setEstado('erro')
+          return
+        }
+        criado = URL.createObjectURL(new Blob([guardada.dados], { type: guardada.tipo }))
+        setEnderecoLocal(criado)
+      })
+      .catch(() => {
+        if (!cancelado) setEstado('erro')
+      })
+
+    return () => {
+      cancelado = true
+      if (criado) URL.revokeObjectURL(criado)
+    }
+  }, [pagina, tentativa])
+
+  const url = pagina.origem === 'aparelho' ? enderecoLocal : usarReserva && pagina.reserva ? pagina.reserva : pagina.url
 
   if (estado === 'erro') {
     return (
       <button
         type="button"
-        className="pagina-erro"
+        className="pagina-item pagina-erro"
         onClick={(e) => {
           e.stopPropagation()
           setTentativa((t) => t + 1)
@@ -59,22 +99,28 @@ function Pagina({ pagina }: { pagina: PaginaCapitulo }) {
     )
   }
 
+  // Ainda lendo do aparelho: reserva o espaço
+  if (url === null) return <div className="pagina-item pagina pagina-carregando" />
+
   // Sem referer: é assim que o próprio site carrega as imagens.
   // loading="eager": a imagem baixa assim que o capítulo é montado, mesmo
   // longe da tela — é isso que adianta os capítulos seguintes.
   return (
     <img
       key={`${tentativa}-${usarReserva}`}
-      className={estado === 'pronta' ? 'pagina' : 'pagina pagina-carregando'}
+      className={estado === 'pronta' ? 'pagina-item pagina' : 'pagina-item pagina pagina-carregando'}
       src={url}
       alt=""
       loading="eager"
       decoding="async"
       referrerPolicy="no-referrer"
-      onLoad={() => setEstado('pronta')}
+      onLoad={() => {
+        setEstado('pronta')
+        aoCarregar()
+      }}
       onError={() => {
         // Primeira falha com reserva disponível: tenta pelo proxy, sem incomodar
-        if (!usarReserva && pagina.reserva) setUsarReserva(true)
+        if (pagina.origem === 'rede' && !usarReserva && pagina.reserva) setUsarReserva(true)
         else setEstado('erro')
       }}
     />
@@ -82,15 +128,19 @@ function Pagina({ pagina }: { pagina: PaginaCapitulo }) {
 }
 
 type PropsBloco = {
+  obraId: number
   capitulo: Capitulo
+  offline: boolean
   aoCarregar: (capituloId: number) => void
   aoFicarNoCentro: (numero: number) => void
   aoMarcar: (capitulo: Capitulo, lido: boolean) => void
+  // Avisa que a altura do capítulo mudou (páginas montadas ou imagem carregada)
+  aoMudarAltura: (numero: number, indice: number) => void
   // Modo automático: marca sozinho quando o fim do capítulo passa pela tela
   automatico: boolean
 }
 
-function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar, automatico }: PropsBloco) {
+function BlocoCapitulo({ obraId, capitulo, offline, aoCarregar, aoFicarNoCentro, aoMarcar, aoMudarAltura, automatico }: PropsBloco) {
   const elemento = useRef<HTMLElement>(null)
   const fimDoCapitulo = useRef<HTMLButtonElement>(null)
   const jaMarcouSozinho = useRef(false)
@@ -100,11 +150,11 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar, automa
   const [perto, setPerto] = useState(true)
   const [alturaGuardada, setAlturaGuardada] = useState<number | null>(null)
 
-  // Busca a lista de imagens do capítulo
+  // Busca a lista de imagens do capítulo (no aparelho, se estiver baixado)
   useEffect(() => {
     let cancelado = false
 
-    carregarPaginas(capitulo.id)
+    carregarPaginas(obraId, capitulo)
       .then((lista) => {
         if (cancelado) return
         setPaginas(lista)
@@ -120,7 +170,15 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar, automa
     return () => {
       cancelado = true
     }
-  }, [capitulo.id, tentativa, aoCarregar])
+    // Só o id e o número importam: marcar "lido" não deve buscar as páginas de novo
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obraId, capitulo.id, capitulo.numero, tentativa, aoCarregar])
+
+  // As páginas acabaram de ser montadas: a altura do capítulo mudou
+  const numero = capitulo.numero
+  useLayoutEffect(() => {
+    if (paginas !== null) aoMudarAltura(numero, -1)
+  }, [paginas, numero, aoMudarAltura])
 
   // Desmonta as imagens só de capítulo que ficou para trás (bem acima da tela)
   useEffect(() => {
@@ -172,33 +230,31 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar, automa
 
     const observador = new IntersectionObserver(
       ([entrada]) => {
-        if (entrada.isIntersecting) aoFicarNoCentro(capitulo.numero)
+        if (entrada.isIntersecting) aoFicarNoCentro(numero)
       },
       { rootMargin: '-50% 0px -50% 0px' },
     )
 
     observador.observe(el)
     return () => observador.disconnect()
-  }, [capitulo.numero, aoFicarNoCentro])
+  }, [numero, aoFicarNoCentro])
 
   const reservado = !perto && alturaGuardada !== null
 
   return (
-    <section
-      ref={elemento}
-      className="capitulo"
-      data-numero={capitulo.numero}
-      style={reservado ? { height: alturaGuardada } : undefined}
-    >
+    <section ref={elemento} className="capitulo" data-numero={numero} style={reservado ? { height: alturaGuardada } : undefined}>
       {!reservado && (
         <>
-          <h2 className="separador">Capítulo {capitulo.numero}</h2>
+          <h2 className="separador">
+            Capítulo {numero}
+            {offline && <span className="selo selo-offline">offline</span>}
+          </h2>
 
-          {paginas === null && erro === null && <p className="suave aviso">Carregando capítulo {capitulo.numero}…</p>}
+          {paginas === null && erro === null && <p className="suave aviso">Carregando capítulo {numero}…</p>}
 
           {erro !== null && (
             <div className="aviso">
-              <p className="erro">Não foi possível carregar o capítulo {capitulo.numero}.</p>
+              <p className="erro">Não foi possível carregar o capítulo {numero}.</p>
               <p className="suave pequeno">{erro}</p>
               <button
                 type="button"
@@ -214,7 +270,13 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar, automa
             </div>
           )}
 
-          {paginas?.map((pagina) => <Pagina key={pagina.url} pagina={pagina} />)}
+          {paginas?.map((pagina, indice) => (
+            <Pagina
+              key={pagina.origem === 'rede' ? pagina.url : `aparelho-${pagina.indice}`}
+              pagina={pagina}
+              aoCarregar={() => aoMudarAltura(numero, indice)}
+            />
+          ))}
 
           {/* Fim do capítulo: botão grande de marcar como lido. O toque nele não abre o menu */}
           {paginas !== null && (
@@ -228,7 +290,7 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar, automa
                 aoMarcar(capitulo, !capitulo.lido)
               }}
             >
-              {capitulo.lido ? `✓ Capítulo ${capitulo.numero} lido` : `Marcar capítulo ${capitulo.numero} como lido`}
+              {capitulo.lido ? `✓ Capítulo ${numero} lido` : `Marcar capítulo ${numero} como lido`}
             </button>
           )}
         </>
@@ -239,10 +301,9 @@ function BlocoCapitulo({ capitulo, aoCarregar, aoFicarNoCentro, aoMarcar, automa
 
 // Onde começar: onde parou neste aparelho; senão o primeiro capítulo depois do
 // "capítulo atual" da obra; senão o primeiro de todos.
-function indiceInicial(obra: ObraLeitor, capitulos: Capitulo[]): number {
-  const salvo = lerPosicao(obra.id)
-  if (salvo !== null) {
-    const i = capitulos.findIndex((c) => c.numero === salvo)
+function indiceInicial(obra: ObraLeitor, capitulos: Capitulo[], salva: Posicao | null): number {
+  if (salva !== null) {
+    const i = capitulos.findIndex((c) => c.numero === salva.numero)
     if (i >= 0) return i
   }
 
@@ -255,9 +316,36 @@ function indiceInicial(obra: ObraLeitor, capitulos: Capitulo[]): number {
   return 0
 }
 
+// Mede o ponto de leitura: qual capítulo está no topo da tela, qual imagem
+// dele e quanto dessa imagem já passou.
+function medirPosicao(): Posicao | null {
+  for (const secao of document.querySelectorAll<HTMLElement>('.capitulo')) {
+    if (secao.getBoundingClientRect().bottom <= 1) continue
+
+    // Capítulo desmontado (espaço reservado) não tem imagens para medir
+    const itens = secao.querySelectorAll<HTMLElement>('.pagina-item')
+    if (itens.length === 0) return null
+
+    // Primeira imagem que ainda não saiu inteira pelo topo
+    for (let indice = 0; indice < itens.length; indice++) {
+      const caixa = itens[indice].getBoundingClientRect()
+      if (caixa.bottom <= 1) continue
+
+      const fracao = caixa.height > 0 ? Math.min(1, Math.max(0, -caixa.top / caixa.height)) : 0
+      return { numero: Number(secao.dataset.numero), indice, fracao }
+    }
+
+    // Passou de todas as imagens: está no botão do fim do capítulo
+    return { numero: Number(secao.dataset.numero), indice: itens.length - 1, fracao: 1 }
+  }
+
+  return null
+}
+
 export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerderAcesso: () => void }) {
   const [obra, setObra] = useState<ObraLeitor | null>(null)
   const [capitulos, setCapitulos] = useState<Capitulo[]>([])
+  const [semRede, setSemRede] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
 
@@ -272,6 +360,9 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
   const fimVisivel = useRef(false)
   const indiceLendo = useRef(0)
 
+  // Ponto salvo para o qual o leitor ainda está voltando depois de abrir
+  const restaurando = useRef<Posicao | null>(null)
+
   // Modo de marcar como lido: ao tocar (padrão) ou automático. Fica guardado no aparelho
   const [automatico, setAutomatico] = useState(() => lerModoAutomatico())
 
@@ -279,19 +370,47 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
   const [menuAberto, setMenuAberto] = useState(false)
   const sentinela = useRef<HTMLDivElement>(null)
 
-  // Carrega a obra e a lista de capítulos
+  // Leitura offline: o download em andamento e o que já está no aparelho
+  const download = useSyncExternalStore(assinarDownload, estadoDoDownload)
+  const downloadDaObra = download?.obraId === obraId ? download : null
+  const [offline, setOffline] = useState<Set<number>>(() => new Set())
+  const [resumo, setResumo] = useState<ResumoOffline | null>(null)
+  const [confirmarApagar, setConfirmarApagar] = useState(false)
+
+  // Relê do aparelho o que está baixado desta obra
+  const atualizarOffline = useCallback(() => {
+    numerosOffline(obraId).then(setOffline)
+    resumoPorObra()
+      .then((porObra) => setResumo(porObra.get(obraId) ?? null))
+      .catch(() => setResumo(null))
+  }, [obraId])
+
+  // Ao abrir e a cada capítulo que o download termina
+  const capitulosBaixados = downloadDaObra?.feitos ?? 0
+  const situacaoDoDownload = downloadDaObra?.situacao ?? null
+  useEffect(() => {
+    atualizarOffline()
+  }, [atualizarOffline, capitulosBaixados, situacaoDoDownload])
+
+  // Carrega a obra e a lista de capítulos (da rede ou do aparelho)
   useEffect(() => {
     let cancelado = false
 
-    Promise.all([carregarObra(obraId), carregarCapitulos(obraId)])
-      .then(([dadosObra, lista]) => {
+    carregarObraECapitulos(obraId)
+      .then(({ obra: dadosObra, capitulos: lista, semRede: daCopia }) => {
         if (cancelado) return
-        const comeco = lista.length > 0 ? indiceInicial(dadosObra, lista) : 0
+        const salva = lerPosicao(obraId)
+        const comeco = lista.length > 0 ? indiceInicial(dadosObra, lista, salva) : 0
+
+        // Se havia um ponto salvo dentro deste capítulo, o leitor volta até ele
+        const voltarPara = salva !== null && lista[comeco]?.numero === salva.numero ? salva : null
+        restaurando.current = voltarPara && (voltarPara.indice > 0 || voltarPara.fracao > 0) ? voltarPara : null
 
         capitulosRef.current = lista
         indiceLendo.current = comeco
         setObra(dadosObra)
         setCapitulos(lista)
+        setSemRede(daCopia)
         setInicio(comeco)
         setFim(comeco)
         setNumeroAtual(lista[comeco]?.numero ?? null)
@@ -302,6 +421,71 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
 
     return () => {
       cancelado = true
+    }
+  }, [obraId])
+
+  // Volta ao ponto salvo. Chamada toda vez que a altura do capítulo muda:
+  // as imagens de cima chegam aos poucos e empurram a página.
+  const aoMudarAltura = useCallback((numero: number, indice: number) => {
+    const alvo = restaurando.current
+    if (!alvo || alvo.numero !== numero || indice > alvo.indice) return
+
+    const itens = document.querySelectorAll<HTMLElement>(`.capitulo[data-numero="${numero}"] .pagina-item`)
+    const item = itens[Math.min(alvo.indice, itens.length - 1)]
+    if (!item) return
+
+    const caixa = item.getBoundingClientRect()
+    window.scrollTo(0, window.scrollY + caixa.top + caixa.height * alvo.fracao)
+  }, [])
+
+  // O leitor para de insistir no ponto salvo assim que o usuário mexe na
+  // página, ou depois de um tempo
+  useEffect(() => {
+    const soltar = () => {
+      restaurando.current = null
+    }
+    const relogio = setTimeout(soltar, RESTAURAR_MS)
+
+    window.addEventListener('touchstart', soltar, { passive: true })
+    window.addEventListener('wheel', soltar, { passive: true })
+    window.addEventListener('keydown', soltar)
+    return () => {
+      clearTimeout(relogio)
+      window.removeEventListener('touchstart', soltar)
+      window.removeEventListener('wheel', soltar)
+      window.removeEventListener('keydown', soltar)
+    }
+  }, [obraId])
+
+  // Grava o ponto de leitura enquanto se rola e quando a página vai embora
+  // (o Safari descarta abas em segundo plano sem avisar)
+  useEffect(() => {
+    let ultimaVez = 0
+    let agendado: ReturnType<typeof setTimeout> | null = null
+
+    const gravar = () => {
+      agendado = null
+      ultimaVez = Date.now()
+      if (restaurando.current !== null) return
+
+      const posicao = medirPosicao()
+      if (posicao) salvarPosicao(obraId, posicao)
+    }
+
+    // No máximo uma gravação a cada SALVAR_POSICAO_MS, sempre com uma no fim da rolagem
+    const aoRolar = () => {
+      if (agendado !== null) return
+      agendado = setTimeout(gravar, Math.max(0, ultimaVez + SALVAR_POSICAO_MS - Date.now()))
+    }
+
+    window.addEventListener('scroll', aoRolar, { passive: true })
+    window.addEventListener('pagehide', gravar)
+    document.addEventListener('visibilitychange', gravar)
+    return () => {
+      if (agendado !== null) clearTimeout(agendado)
+      window.removeEventListener('scroll', aoRolar)
+      window.removeEventListener('pagehide', gravar)
+      document.removeEventListener('visibilitychange', gravar)
     }
   }, [obraId])
 
@@ -338,12 +522,12 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
     return () => observador.disconnect()
   }, [capitulos.length, avancarSePuder])
 
-  // O menu some sozinho depois de alguns segundos
+  // O menu some sozinho depois de alguns segundos sem toque
   useEffect(() => {
     if (!menuAberto) return
     const relogio = setTimeout(() => setMenuAberto(false), MENU_MS)
     return () => clearTimeout(relogio)
-  }, [menuAberto, numeroAtual])
+  }, [menuAberto, numeroAtual, confirmarApagar, capitulosBaixados, situacaoDoDownload, automatico])
 
   const aoCarregar = useCallback(
     (capituloId: number) => {
@@ -354,17 +538,16 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
     [avancarSePuder],
   )
 
-  // Guarda no aparelho o capítulo que está no meio da tela
+  // Mudou o capítulo que está no meio da tela
   const aoFicarNoCentro = useCallback(
     (numero: number) => {
       setNumeroAtual(numero)
-      salvarPosicao(obraId, numero)
 
-      // Mudou o capítulo em leitura: adianta mais um lá na frente
+      // Adianta mais um capítulo lá na frente
       indiceLendo.current = capitulosRef.current.findIndex((c) => c.numero === numero)
       avancarSePuder()
     },
-    [obraId, avancarSePuder],
+    [avancarSePuder],
   )
 
   // Marca ou desmarca um capítulo como lido
@@ -389,7 +572,7 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
           aoPerderAcesso()
           return
         }
-        setAviso(`Não foi possível salvar o capítulo ${capitulo.numero}: ${e.message}`)
+        setAviso(`Não foi possível salvar o capítulo ${capitulo.numero} (sem internet?): ${e.message}`)
       })
     },
     [aoPerderAcesso],
@@ -397,12 +580,27 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
 
   // Pular: recomeça a página a partir do capítulo escolhido
   function pularPara(indice: number) {
+    restaurando.current = null
     indiceLendo.current = indice
     setInicio(indice)
     setFim(indice)
     setNumeroAtual(capitulos[indice].numero)
-    salvarPosicao(obraId, capitulos[indice].numero)
+    salvarPosicao(obraId, { numero: capitulos[indice].numero, indice: 0, fracao: 0 })
     window.scrollTo(0, 0)
+  }
+
+  // Libera o espaço desta obra no aparelho (pede um segundo toque para confirmar)
+  function liberarEspaco() {
+    if (!confirmarApagar) {
+      setConfirmarApagar(true)
+      return
+    }
+
+    setConfirmarApagar(false)
+    pararDownload()
+    apagarObra(obraId)
+      .then(atualizarOffline)
+      .catch((e: Error) => setAviso(`Não foi possível liberar o espaço: ${e.message}`))
   }
 
   if (erro) {
@@ -410,6 +608,7 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
       <main className="tela-centro">
         <section className="cartao">
           <p className="erro">Não foi possível abrir a obra: {erro}</p>
+          <p className="suave pequeno">Sem internet, só abrem as obras baixadas para leitura offline.</p>
           <a href="#/">Voltar para a biblioteca</a>
         </section>
       </main>
@@ -431,6 +630,7 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
   }
 
   const indiceAtual = capitulos.findIndex((c) => c.numero === numeroAtual)
+  const baixando = downloadDaObra?.situacao === 'baixando'
 
   return (
     // Um toque em qualquer ponto da leitura mostra ou esconde o menu
@@ -441,7 +641,10 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
             ← Biblioteca
           </a>
 
-          <span className="menu-titulo">{obra.titulo}</span>
+          <span className="menu-titulo">
+            {obra.titulo}
+            {semRede && ' (sem internet)'}
+          </span>
 
           <select
             aria-label="Pular para capítulo"
@@ -452,14 +655,15 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
               <option key={c.id} value={i}>
                 Capítulo {c.numero}
                 {c.lido ? ' ✓' : ''}
+                {offline.has(c.numero) ? ' ⬇' : ''}
               </option>
             ))}
           </select>
 
-          {/* Segunda linha do menu: como os capítulos são marcados como lidos */}
+          {/* Como os capítulos são marcados como lidos */}
           <button
             type="button"
-            className="secundario menu-modo"
+            className="secundario menu-linha"
             onClick={() => {
               salvarModoAutomatico(!automatico)
               setAutomatico(!automatico)
@@ -467,6 +671,33 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
           >
             Marcar lido: {automatico ? 'automático, ao passar do fim do capítulo' : 'só ao tocar no botão do fim do capítulo'}
           </button>
+
+          {/* Leitura offline: baixar a partir do capítulo em leitura, parar, liberar */}
+          {baixando ? (
+            <button type="button" className="secundario menu-linha" onClick={pararDownload}>
+              Baixando capítulo {downloadDaObra.numeroAtual ?? '…'} — {downloadDaObra.feitos} de {downloadDaObra.total} prontos,{' '}
+              {formatarBytes(downloadDaObra.bytes)}. Tocar para parar
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="secundario menu-linha"
+              onClick={() => void baixarObra(obra, capitulos, indiceAtual >= 0 ? indiceAtual : inicio)}
+            >
+              {resumo && resumo.capitulos > 0 ? 'Continuar download' : 'Baixar para ler offline'} (do capítulo{' '}
+              {capitulos[indiceAtual >= 0 ? indiceAtual : inicio].numero} em diante)
+            </button>
+          )}
+
+          {downloadDaObra?.mensagem && !baixando && <p className="menu-linha suave pequeno">{downloadDaObra.mensagem}</p>}
+
+          {resumo && resumo.bytes > 0 && (
+            <button type="button" className="secundario menu-linha" onClick={liberarEspaco}>
+              {confirmarApagar
+                ? 'Tocar de novo para apagar do aparelho'
+                : `No aparelho: ${resumo.capitulos} capítulos, ${formatarBytes(resumo.bytes)}. Liberar espaço`}
+            </button>
+          )}
         </div>
       )}
 
@@ -486,13 +717,23 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
       {capitulos.slice(inicio, fim + 1).map((capitulo) => (
         <BlocoCapitulo
           key={capitulo.id}
+          obraId={obraId}
           capitulo={capitulo}
+          offline={offline.has(capitulo.numero)}
           aoCarregar={aoCarregar}
           aoFicarNoCentro={aoFicarNoCentro}
           aoMarcar={aoMarcar}
+          aoMudarAltura={aoMudarAltura}
           automatico={automatico}
         />
       ))}
+
+      {/* Download em andamento: fica visível mesmo com o menu fechado */}
+      {baixando && !menuAberto && (
+        <div className="chip-download">
+          ⬇ {downloadDaObra.feitos}/{downloadDaObra.total} · {formatarBytes(downloadDaObra.bytes)}
+        </div>
+      )}
 
       {aviso && (
         <button type="button" className="aviso-flutuante" onClick={(e) => (e.stopPropagation(), setAviso(null))}>
