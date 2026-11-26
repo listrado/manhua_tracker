@@ -18,6 +18,7 @@ import {
   type Posicao,
 } from '../lib/dados'
 import { apagarObra, formatarBytes, lerPagina, resumoPorObra, type ResumoOffline } from '../lib/offline'
+import { ErroSemRede } from '../lib/rede'
 import { esquecerSenha } from '../lib/senha'
 
 // Leitor contínuo: os capítulos aparecem um embaixo do outro e os próximos são
@@ -370,7 +371,8 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
   const [obra, setObra] = useState<ObraLeitor | null>(null)
   const [capitulos, setCapitulos] = useState<Capitulo[]>([])
   const [semRede, setSemRede] = useState(false)
-  const [erro, setErro] = useState<string | null>(null)
+  // semRede: a obra não abriu por falta de internet (e não está baixada)
+  const [erro, setErro] = useState<{ mensagem: string; semRede: boolean } | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
 
   // Capítulos montados na página: do índice "inicio" ao "fim", inclusive
@@ -448,7 +450,7 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
         setNumeroAtual(lista[comeco]?.numero ?? null)
       })
       .catch((e: Error) => {
-        if (!cancelado) setErro(e.message)
+        if (!cancelado) setErro({ mensagem: e.message, semRede: e instanceof ErroSemRede })
       })
 
     return () => {
@@ -658,8 +660,20 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
     return (
       <main className="tela-centro">
         <section className="cartao">
-          <p className="erro">Não foi possível abrir a obra: {erro}</p>
-          <p className="suave pequeno">Sem internet, só abrem as obras baixadas para leitura offline.</p>
+          {erro.semRede ? (
+            <>
+              <p>
+                <strong>Modo offline</strong>
+              </p>
+              <p className="suave">{erro.mensagem}</p>
+              <p className="suave pequeno">Sem internet, só abrem as obras baixadas (menu ☰ › Baixar para ler offline, com internet).</p>
+            </>
+          ) : (
+            <>
+              <p className="erro">Não foi possível abrir a obra: {erro.mensagem}</p>
+              <p className="suave pequeno">Sem internet, só abrem as obras baixadas para leitura offline.</p>
+            </>
+          )}
           <a href="#/">Voltar para a biblioteca</a>
         </section>
       </main>
@@ -710,7 +724,7 @@ export function TelaLeitor({ obraId, aoPerderAcesso }: { obraId: number; aoPerde
 
           <span className="menu-titulo">
             {obra.titulo}
-            {semRede && ' (sem internet)'}
+            {semRede && ' (modo offline)'}
           </span>
 
           <select

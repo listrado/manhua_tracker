@@ -1,10 +1,11 @@
 // Armazenamento offline no aparelho (IndexedDB): as imagens dos capítulos
 // baixados e uma cópia dos dados da obra, para abrir sem internet.
 //
-// Três "gavetas":
+// Quatro "gavetas":
 //   paginas ..... [obraId, numero, indice] -> a imagem (bytes + tipo)
 //   capitulos ... [obraId, numero]         -> quantas páginas, quantos bytes, se está completo
 //   obras ....... obraId                   -> cópia da obra e da lista de capítulos
+//   capas ....... obraId                   -> a capa da obra (bytes + tipo + qual arquivo era)
 //
 // A imagem é guardada como bytes (ArrayBuffer), não como Blob: o Safari do
 // iPhone já teve problemas com Blob dentro do IndexedDB.
@@ -13,9 +14,12 @@ export type PaginaGuardada = { dados: ArrayBuffer; tipo: string }
 export type CapituloGuardado = { obraId: number; numero: number; total: number; bytes: number; completo: boolean }
 export type ObraGuardada<O, C> = { obra: O; capitulos: C[]; salvoEm: string }
 export type ResumoOffline = { capitulos: number; bytes: number }
+// path: o arquivo da capa no servidor, para saber se ela mudou desde que foi guardada
+export type CapaGuardada = { dados: ArrayBuffer; tipo: string; path: string }
 
 const NOME_DO_BANCO = 'manhua-offline'
-const VERSAO = 1
+// Versão 2: gaveta das capas. Subir a versão não apaga o que já está guardado.
+const VERSAO = 2
 
 let conexao: Promise<IDBDatabase> | null = null
 
@@ -29,9 +33,18 @@ function abrir(): Promise<IDBDatabase> {
       if (!banco.objectStoreNames.contains('paginas')) banco.createObjectStore('paginas')
       if (!banco.objectStoreNames.contains('capitulos')) banco.createObjectStore('capitulos')
       if (!banco.objectStoreNames.contains('obras')) banco.createObjectStore('obras')
+      if (!banco.objectStoreNames.contains('capas')) banco.createObjectStore('capas')
     }
 
-    pedido.onsuccess = () => resolver(pedido.result)
+    pedido.onsuccess = () => {
+      const banco = pedido.result
+      // Outra aba abriu uma versão mais nova do app: solta o banco para ela poder atualizar
+      banco.onversionchange = () => {
+        banco.close()
+        conexao = null
+      }
+      resolver(banco)
+    }
     pedido.onerror = () => {
       conexao = null
       rejeitar(pedido.error ?? new Error('Não foi possível abrir o armazenamento do aparelho'))
@@ -125,14 +138,43 @@ export async function lerObraGuardada<O, C>(obraId: number): Promise<ObraGuardad
   return (guardada as ObraGuardada<O, C> | undefined) ?? null
 }
 
-// Libera o espaço de uma obra: apaga as imagens, os capítulos e a cópia da obra.
+// Todas as cópias de obra guardadas no aparelho.
+export async function obrasGuardadas<O, C>(): Promise<{ obraId: number; guardada: ObraGuardada<O, C> }[]> {
+  const banco = await abrir()
+  const gaveta = banco.transaction('obras').objectStore('obras')
+  const [chaves, valores] = await Promise.all([esperar(gaveta.getAllKeys()), esperar(gaveta.getAll())])
+  return chaves.map((chave, i) => ({ obraId: Number(chave), guardada: valores[i] as ObraGuardada<O, C> }))
+}
+
+export async function guardarCapa(obraId: number, capa: CapaGuardada): Promise<void> {
+  const banco = await abrir()
+  const transacao = banco.transaction('capas', 'readwrite')
+  transacao.objectStore('capas').put(capa, obraId)
+  await concluir(transacao)
+}
+
+// Capas guardadas das obras pedidas (as que não têm capa ficam de fora).
+export async function lerCapas(obraIds: number[]): Promise<Map<number, CapaGuardada>> {
+  const banco = await abrir()
+  const gaveta = banco.transaction('capas').objectStore('capas')
+  const capas = await Promise.all(obraIds.map((id) => esperar(gaveta.get(id))))
+
+  const resultado = new Map<number, CapaGuardada>()
+  obraIds.forEach((id, i) => {
+    if (capas[i]) resultado.set(id, capas[i] as CapaGuardada)
+  })
+  return resultado
+}
+
+// Libera o espaço de uma obra: apaga as imagens, os capítulos, a cópia da obra e a capa.
 export async function apagarObra(obraId: number): Promise<void> {
   const banco = await abrir()
-  const transacao = banco.transaction(['paginas', 'capitulos', 'obras'], 'readwrite')
+  const transacao = banco.transaction(['paginas', 'capitulos', 'obras', 'capas'], 'readwrite')
 
   transacao.objectStore('paginas').delete(faixaDaObra(obraId))
   transacao.objectStore('capitulos').delete(faixaDaObra(obraId))
   transacao.objectStore('obras').delete(obraId)
+  transacao.objectStore('capas').delete(obraId)
   await concluir(transacao)
 }
 

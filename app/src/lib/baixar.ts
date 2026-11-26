@@ -7,7 +7,7 @@
 // O download vive fora das telas (neste módulo), então continua enquanto se
 // navega entre a biblioteca e o leitor. O iPhone, porém, suspende a página
 // quando o app sai da tela: não existe download em segundo plano.
-import { carregarEnderecosParaBaixar, type Capitulo, type ObraLeitor } from './dados'
+import { baixarCapa, carregarEnderecosParaBaixar, type Capitulo, type ObraLeitor } from './dados'
 import { capitulosDaObra, guardarCapitulo, guardarObra, guardarPagina } from './offline'
 
 // Limite por obra. Uma obra longa passa fácil de 20 GB; o limite evita encher o aparelho.
@@ -131,6 +131,8 @@ export async function baixarObra(obra: ObraLeitor, capitulos: Capitulo[], aParti
 
     // Cópia da obra e da lista de capítulos, para abrir sem internet
     await guardarObra(obra.id, obra, capitulos)
+    // E a capa, para a biblioteca mostrá-la sem internet (não segura o download)
+    if (obra.capa_path) void baixarCapa(obra.id, obra.capa_path).catch(() => {})
 
     // O que já está no aparelho (para retomar e para respeitar o limite)
     const guardados = await capitulosDaObra(obra.id)

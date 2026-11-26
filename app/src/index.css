@@ -148,6 +148,39 @@ button.secundario {
   border-color: var(--destaque);
 }
 
+/* Modo offline: a única "aba" (não é botão, então centraliza o texto à mão) */
+.aba-unica {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+/* Faixa do modo offline, no topo da biblioteca */
+.faixa-offline {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 12px;
+  background: var(--cartao);
+  border: 1px solid var(--borda);
+  border-left: 4px solid #f5a524;
+  border-radius: 10px;
+}
+
+.faixa-offline-texto {
+  display: grid;
+  min-width: 0;
+}
+
+.faixa-offline button {
+  flex: none;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
 .contagem {
   opacity: 0.75;
   font-variant-numeric: tabular-nums;
