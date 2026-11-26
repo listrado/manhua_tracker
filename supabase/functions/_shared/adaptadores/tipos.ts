@@ -48,6 +48,16 @@ export function numeroDoCapitulo(texto: string): number | null {
   return m ? Number(m[1].replace('-', '.')) : null
 }
 
+// "Chapter 266 - 223": capítulo antigo (o 223) repostado com outro número na
+// frente. Visto no Manhua Top em The Beginning After the End: os capítulos 223
+// a 237 reapareceram como "266 - 223" a "280 - 237", todos no mesmo dia, e o
+// sistema achou que a obra tinha chegado ao 280. Capítulo duplo de verdade
+// ("Chapter 10 - 11") tem o segundo número maior e continua valendo.
+export function ehCapituloRepostado(titulo: string): boolean {
+  const m = titulo.match(/chapter\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$/i)
+  return m !== null && Number(m[2]) < Number(m[1])
+}
+
 // Entidades HTML que aparecem em títulos ("God&#039;s Contempt").
 export function decodificarHtml(texto: string): string {
   return texto

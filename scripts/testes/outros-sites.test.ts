@@ -123,6 +123,25 @@ test('manhua top: busca, obra, capítulos (uma página) e páginas', () => {
   assert.ok(paginas[80].endsWith('/chapter-297/ch-297-img-81.jpg'))
 })
 
+test('manhua top: capítulo antigo repostado com outro número não conta como novo', () => {
+  // Como estava em The Beginning After the End (2026-11): "Chapter 266 - 223"
+  // é o capítulo 223 de novo. "Chapter 10 - 11" é capítulo duplo e vale.
+  const item = (slug: string, titulo: string) =>
+    `{\\"id\\":\\"1\\",\\"mangaId\\":\\"1\\",\\"volumeId\\":null,\\"slug\\":\\"${slug}\\",\\"title\\":\\"${titulo}\\",\\"extra\\":\\"\\",\\"date\\":\\"2026-08-07\\",\\"path\\":\\"/manhua/obra/${slug}/\\"}`
+  const html = [
+    item('chapter-280-237', 'Chapter 280 - 237'),
+    item('chapter-266-223', 'Chapter 266 - 223'),
+    item('chapter-259', 'Chapter 259'),
+    item('chapter-10-11', 'Chapter 10 - 11'),
+  ].join(',')
+
+  const { capitulos } = extrairCapitulosManhuatop(html, 'https://manhuatop.org')
+  assert.deepEqual(
+    capitulos.map((c) => c.numero),
+    [259, 10],
+  )
+})
+
 test('site com motor desconhecido dá erro claro', () => {
   assert.throws(() => criarAdaptador({ slug: 'x', adaptador: 'nao-existe', dominios: ['x.com'] }, async () => ''), /Ainda não existe adaptador/)
 })

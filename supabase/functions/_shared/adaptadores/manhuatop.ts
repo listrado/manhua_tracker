@@ -8,6 +8,7 @@
 //   capítulo ...... GET {base}/manhua/<slug>/chapter-N/   (lista "images")
 import {
   decodificarHtml,
+  ehCapituloRepostado,
   ehDesafioCloudflare,
   ErroDesafioCloudflare,
   numeroDoCapitulo,
@@ -84,6 +85,9 @@ export function extrairCapitulosManhuatop(html: string, base: string): { capitul
   const padrao = /"slug":"([^"]+)","title":"((?:[^"\\]|\\.)*)","extra":"(?:[^"\\]|\\.)*","date":"[^"]*","path":"([^"]+)"/g
   for (const m of dados.matchAll(padrao)) {
     const titulo = textoJson(m[2])
+    // Capítulo antigo repostado com outro número: não é capítulo novo
+    if (ehCapituloRepostado(titulo)) continue
+
     const numero = numeroDoCapitulo(titulo) ?? numeroDoCapitulo(m[1])
     if (numero === null) continue
 
