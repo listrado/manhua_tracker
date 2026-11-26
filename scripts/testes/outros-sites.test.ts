@@ -51,6 +51,13 @@ test('manganato: obra, capítulos pela API e páginas', () => {
   assert.equal(paginas[0], 'https://img-r1.2xstorage.com/solo-max-level-newbie/285/0.webp')
   assert.equal(paginas[1], 'https://img-r1.2xstorage.com/solo-max-level-newbie/285/1.webp')
   assert.ok(paginas.length > 10)
+
+  // Servidor sem a barra no fim (Transcension Academy, capítulo 147, 2026-11):
+  // antes saía "https://imgs-2.2xstorage.comtranscension-academy/..."
+  const semBarra = extrairPaginasNato(
+    'var cdns = ["https:\\/\\/imgs-2.2xstorage.com"]\nvar chapterImages = ["transcension-academy\\/147\\/0.webp"]',
+  )
+  assert.deepEqual(semBarra, ['https://imgs-2.2xstorage.com/transcension-academy/147/0.webp'])
 })
 
 test('manganato: o endereço da obra sai do nome', () => {

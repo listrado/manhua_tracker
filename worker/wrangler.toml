@@ -11,11 +11,13 @@ ORIGENS_PERMITIDAS = "https://listrado.github.io,http://localhost:5173,http://12
 
 # Para cada site: o Referer que as imagens exigem e os domínios de imagem aceitos
 # (o domínio e qualquer subdomínio dele). Site novo ou CDN nova entra aqui.
+# Kingofshojo: os banners e a página de créditos de alguns capítulos ficam no
+# i.ibb.co; sem ele, o download desses capítulos falhava na imagem 1.
 SITES = '''
 {
   "manhuaplus":        { "referer": "https://manhuaplus.org/",     "dominios": ["manhuaplus.cc", "manhuaplus.org"] },
   "manganato":         { "referer": "https://www.manganato.gg/",   "dominios": ["2xstorage.com"] },
-  "kingofshojo":       { "referer": "https://kingofshojo.com/",    "dominios": ["kingofshojo.com"] },
+  "kingofshojo":       { "referer": "https://kingofshojo.com/",    "dominios": ["kingofshojo.com", "ibb.co"] },
   "arenascans":        { "referer": "https://arenascan.com/",      "dominios": ["arenascan.com"] },
   "manhwa-manhua-top": { "referer": "https://manhuatop.org/",      "dominios": ["manhuatop.org"] }
 }

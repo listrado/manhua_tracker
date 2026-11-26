@@ -64,8 +64,11 @@ export function extrairPaginasNato(html: string): string[] {
   const imagens = html.match(/var\s+chapterImages\s*=\s*(\[[^\]]*\])/)
   if (!cdns || !imagens) throw new Error('Manganato: página de capítulo sem a lista de imagens')
 
-  const servidor = (JSON.parse(cdns[1]) as string[])[0]
-  return (JSON.parse(imagens[1]) as string[]).map((caminho) => servidor + caminho)
+  // O servidor às vezes vem com a barra no fim ("https://img-r1.2xstorage.com/")
+  // e às vezes sem ("https://imgs-2.2xstorage.com"); o site junta os dois com
+  // uma barra, e aqui também: exatamente uma
+  const servidor = (JSON.parse(cdns[1]) as string[])[0].trim().replace(/\/+$/, '')
+  return (JSON.parse(imagens[1]) as string[]).map((caminho) => `${servidor}/${caminho.trim().replace(/^\/+/, '')}`)
 }
 
 export function criarManganato(slug: string, base: string, http: Http): Adaptador {
